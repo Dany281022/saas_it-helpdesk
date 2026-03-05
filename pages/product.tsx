@@ -5,9 +5,6 @@ import { useAuth, Protect, UserButton } from '@clerk/nextjs';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { fetchEventSource } from '@microsoft/fetch-event-source';
-// AJOUT : Import de la bibliothèque PDF
-// @ts-ignore
-import html2pdf from 'html2pdf.js';
 
 const PricingTable = () => (
   <div className="p-12 text-center border-2 border-dashed rounded-xl bg-gray-50 max-w-2xl mx-auto mt-20">
@@ -28,30 +25,23 @@ function TicketResolverForm() {
   const [output, setOutput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
-  // TA LOGIQUE DE NETTOYAGE (Inchangée)
+  // LOGIQUE DE NETTOYAGE ULTIME : Pour décoller absolument tout
   const formatOutput = (text: string) => {
     if (!text) return '';
     return text
+      // 1. Force un saut de ligne AVANT chaque titre ###
       .replace(/###\s?/g, '\n\n### ') 
+      // 2. Décolle les titres s'ils sont fusionnés au texte (ex: STEPS1. -> STEPS\n1.)
       .replace(/(DIAGNOSTIC|SUMMARY|STEPS|RECOMMENDATION)([0-9]|[A-Z])/g, '$1\n\n$2') 
+      // 3. Force un retour à la ligne avant chaque numéro d'étape (1., 2., etc.)
       .replace(/(\d\.)\s?/g, '\n\n$1 ')
+      // 4. Force un retour à la ligne avant chaque tiret "-" pour les sous-étapes
       .replace(/\s-\s/g, '\n\n- ')
+      // 5. CORRECTIF RÉSUMÉ & RECO : Force le saut de ligne si le texte suit directement le titre
       .replace(/(SUMMARY|RECOMMENDATION)\s+([A-Z])/g, '$1\n\n$2')
+      // 6. Nettoyage des espaces excessifs
       .replace(/\n\n\n+/g, '\n\n') 
       .trim();
-  };
-
-  // AJOUT : Fonction de téléchargement
-  const downloadPDF = () => {
-    const element = document.getElementById('report-to-print');
-    const opt = {
-      margin: [10, 10],
-      filename: `Incident-Report-${new Date().getTime()}.pdf`,
-      image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2, useCORS: true },
-      jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-    };
-    html2pdf().from(element).set(opt).save();
   };
 
   async function handleSubmit(e: React.FormEvent) {
@@ -129,25 +119,16 @@ function TicketResolverForm() {
         </button>
       </form>
 
-      {/* ZONE DU RAPPORT avec l'ID pour l'impression */}
+      {/* AFFICHAGE OPTIMISÉ STYLE "RAPPORT TECHNIQUE" */}
       {output && (
-        <section id="report-to-print" className="mt-8 bg-white rounded-xl shadow-2xl border-t-8 border-indigo-600 overflow-hidden animate-in fade-in duration-500">
+        <section className="mt-8 bg-white rounded-xl shadow-2xl border-t-8 border-indigo-600 overflow-hidden animate-in fade-in duration-500">
           <div className="bg-indigo-50 p-4 border-b border-indigo-100 flex justify-between items-center">
             <h2 className="text-xl font-bold text-indigo-800 flex items-center gap-2 uppercase tracking-tight">
                <span>📋</span> IT Incident Report
             </h2>
-            <div className="flex items-center gap-3">
-              {/* AJOUT : Le bouton PDF */}
-              <button 
-                onClick={downloadPDF}
-                className="bg-white text-indigo-600 border border-indigo-200 px-3 py-1 rounded-md text-xs font-bold hover:bg-indigo-600 hover:text-white transition-all flex items-center gap-2 shadow-sm"
-              >
-                📥 PDF
-              </button>
-              <span className="text-xs font-bold text-indigo-600 bg-white px-3 py-1 rounded-full shadow-sm">
-                DATE: {new Date().toLocaleDateString()}
-              </span>
-            </div>
+            <span className="text-sm font-bold text-indigo-600 bg-white px-3 py-1 rounded-full shadow-sm">
+              DATE: {new Date().toLocaleDateString()}
+            </span>
           </div>
           
           <div className="p-8">
@@ -155,6 +136,7 @@ function TicketResolverForm() {
               <ReactMarkdown 
                 remarkPlugins={[remarkGfm]}
                 components={{
+                  // Titres : Bannières bleues stylées
                   h3: ({node, ...props}) => (
                     <h3 className="text-sm uppercase tracking-wider font-black text-indigo-600 mt-8 mb-4 border-l-4 border-indigo-500 pl-3 bg-indigo-50 py-2" {...props} />
                   ),
