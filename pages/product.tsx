@@ -26,10 +26,10 @@ function TicketResolverForm() {
   const [output, setOutput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Nettoyage et formatage de la réponse de l'IA
+  // Nettoyage et formatage pour assurer un rendu Markdown propre
   const formatOutput = (text: string) => {
     return text
-      .replace(/### (Diagnostic|Solution|Steps|Recommendation)/gi, '\n\n**$1**\n\n')
+      .replace(/### (Diagnostic|Solution|Steps|Recommendation|Conclusion)/gi, '\n\n### $1\n\n')
       .trim();
   };
 
@@ -41,7 +41,6 @@ function TicketResolverForm() {
       const jwt = await getToken();
       if (!jwt) return;
       
-      // Appel vers ton API Python (on utilisera l'endpoint /api/ticket)
       await fetchEventSource('/api/ticket', {
         method: 'POST',
         headers: { 
@@ -56,6 +55,7 @@ function TicketResolverForm() {
         }),
         onmessage(ev) {
           if (ev.data === "[DONE]") { setLoading(false); return; }
+          // On ajoute les données au fur et à mesure pour l'effet streaming
           setOutput((prev) => prev + ev.data);
         },
         onclose() { setLoading(false); },
@@ -75,7 +75,6 @@ function TicketResolverForm() {
       
       <form onSubmit={handleSubmit} className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-200">
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Sujet */}
           <div className="flex flex-col md:col-span-1">
             <label className="text-sm font-semibold mb-1 text-gray-700">Issue Subject</label>
             <input 
@@ -88,7 +87,6 @@ function TicketResolverForm() {
             />
           </div>
 
-          {/* Catégorie */}
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Category</label>
             <select 
@@ -103,7 +101,6 @@ function TicketResolverForm() {
             </select>
           </div>
 
-          {/* Priorité */}
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Priority</label>
             <select 
@@ -119,7 +116,6 @@ function TicketResolverForm() {
           </div>
         </div>
 
-        {/* Description */}
         <div className="flex flex-col">
           <label className="text-sm font-semibold mb-1 text-gray-700">Detailed Description</label>
           <textarea 
@@ -141,20 +137,23 @@ function TicketResolverForm() {
         </button>
       </form>
 
-      {/* Affichage de la réponse IA */}
+      {/* Affichage de la réponse IA avec formatage Markdown */}
       {output && (
-        <section className="mt-8 bg-white p-8 rounded-xl shadow-2xl border-t-4 border-indigo-500">
-          <div className="prose max-w-none">
-            <h2 className="text-xl font-bold text-indigo-700 mb-4 flex items-center gap-2">
-               <span>🤖</span> AI Diagnostic & Resolution
-            </h2>
+        <section className="mt-8 bg-white p-8 rounded-xl shadow-2xl border-t-4 border-indigo-500 animate-in fade-in duration-500">
+          <h2 className="text-xl font-bold text-indigo-700 mb-6 flex items-center gap-2 border-b pb-2">
+             <span>🤖</span> AI Diagnostic & Resolution
+          </h2>
+          
+          <div className="prose prose-indigo max-w-none break-words">
             <ReactMarkdown 
               remarkPlugins={[remarkGfm]}
               components={{
-                h3: ({...props}) => <h3 className="text-lg font-bold text-gray-900 mt-6 mb-2" {...props} />,
-                p: ({...props}) => <p className="text-gray-700 mb-4" {...props} />,
-                ul: ({...props}) => <ul className="list-disc pl-5 mb-4 space-y-2" {...props} />,
-                ol: ({...props}) => <ol className="list-decimal pl-5 mb-4 space-y-2" {...props} />,
+                h3: ({...props}) => <h3 className="text-lg font-bold text-gray-900 mt-6 mb-2 border-l-4 border-indigo-200 pl-3" {...props} />,
+                p: ({...props}) => <p className="text-gray-700 leading-relaxed mb-4" {...props} />,
+                ul: ({...props}) => <ul className="list-disc pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
+                ol: ({...props}) => <ol className="list-decimal pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
+                strong: ({...props}) => <strong className="font-bold text-indigo-900" {...props} />,
+                code: ({...props}) => <code className="bg-gray-100 text-red-600 px-1 rounded" {...props} />,
               }}
             >
               {formatOutput(output)}
