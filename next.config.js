@@ -1,11 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   typescript: {
-    ignoreBuildErrors: true, // Très utile pour finir ton TP sans bloquer sur des types
+    ignoreBuildErrors: true,
   },
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-}
+};
 
-export default nextConfig
+export default nextConfig;

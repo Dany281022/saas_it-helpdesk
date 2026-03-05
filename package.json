@@ -1,18 +1,18 @@
 {
-  "name": "saas01_test",
+  "name": "saas_it-helpdesk",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint . --ext .js,.jsx,.ts,.tsx"
+    "lint": "next lint"
   },
   "dependencies": {
     "@clerk/nextjs": "^6.37.3",
     "@microsoft/fetch-event-source": "^2.0.1",
     "@tailwindcss/typography": "^0.5.19",
-    "html2pdf.js": "^0.14.0",
     "next": "^16.1.6",
     "react": "^18.2.0",
     "react-datepicker": "^9.1.0",
