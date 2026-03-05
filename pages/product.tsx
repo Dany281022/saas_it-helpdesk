@@ -25,17 +25,19 @@ function TicketResolverForm() {
   const [output, setOutput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
-  // LOGIQUE DE NETTOYAGE RENFORCÉE : Spéciale pour décoller les listes et titres
+  // LOGIQUE DE NETTOYAGE RENFORCÉE : Pour une structure parfaite
   const formatOutput = (text: string) => {
     if (!text) return '';
     return text
-      // 1. Force un saut de ligne AVANT chaque titre ### pour décoller du bloc précédent
+      // 1. Force un saut de ligne AVANT chaque titre ###
       .replace(/###\s?/g, '\n\n### ') 
-      // 2. Décolle les titres s'ils sont fusionnés au texte (ex: STEPS1. -> STEPS\n1.)
+      // 2. Décolle les titres s'ils sont fusionnés au texte
       .replace(/(DIAGNOSTIC|SUMMARY|STEPS|RECOMMENDATION)([0-9]|[A-Z])/g, '$1\n\n$2') 
-      // 3. MAGIE POUR LES LISTES : Force un retour à la ligne avant chaque numéro (1., 2., etc.)
+      // 3. Force un retour à la ligne avant chaque numéro d'étape (1., 2., etc.)
       .replace(/(\d\.)\s?/g, '\n\n$1 ')
-      // 4. Nettoyage des espaces excessifs
+      // 4. TA DEMANDE : Force un retour à la ligne avant chaque tiret "-" pour les sous-étapes
+      .replace(/\s-\s/g, '\n\n- ')
+      // 5. Nettoyage des espaces excessifs
       .replace(/\n\n\n+/g, '\n\n') 
       .trim();
   };
@@ -132,14 +134,13 @@ function TicketResolverForm() {
               <ReactMarkdown 
                 remarkPlugins={[remarkGfm]}
                 components={{
-                  // Titres : Bannières bleues comme dans ton projet médical
                   h3: ({...props}) => (
                     <h3 className="text-sm uppercase tracking-wider font-black text-indigo-600 mt-8 mb-4 border-l-4 border-indigo-500 pl-3 bg-indigo-50 py-2" {...props} />
                   ),
                   p: ({...props}) => <p className="text-gray-700 leading-relaxed mb-4" {...props} />,
                   ul: ({...props}) => <ul className="list-disc pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
                   ol: ({...props}) => <ol className="list-decimal pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
-                  li: ({...props}) => <li className="mb-1" {...props} />,
+                  li: ({...props}) => <li className="mb-2 ml-4" {...props} />,
                   strong: ({...props}) => <strong className="font-bold text-gray-900 bg-yellow-50 px-1" {...props} />,
                 }}
               >
