@@ -36,9 +36,23 @@ def resolve_ticket(
 ):
     client = OpenAI()
     
+    # Instruction système renforcée pour le rendu "Fiche Technique"
+    system_instruction = (
+        "You are a Senior IT Support Engineer. "
+        "Structure your response strictly with these headers in English:\n"
+        "### NATURE OF DIAGNOSTIC\n"
+        "(Identify the technical field)\n\n"
+        "### TECHNICAL SUMMARY\n"
+        "(One sentence summary)\n\n"
+        "### RESOLUTION STEPS\n"
+        "(Step-by-step instructions)\n\n"
+        "### FINAL RECOMMENDATION\n"
+        "(Pro-tip for prevention)"
+    )
+    
     messages = [
-        {"role": "system", "content": "You are a Senior IT Support Engineer. Provide a diagnostic, solution, and recommendation."},
-        {"role": "user", "content": f"Issue: {ticket.title}\nDesc: {ticket.description}"},
+        {"role": "system", "content": system_instruction},
+        {"role": "user", "content": f"Issue: {ticket.title}\nCategory: {ticket.category}\nPriority: {ticket.priority}\nDesc: {ticket.description}"},
     ]
     
     stream = client.chat.completions.create(
@@ -60,6 +74,7 @@ def health_check():
     return {"status": "healthy"}
 
 # Serve Next.js static files (Essential for Docker build)
+# Ce bloc est crucial pour ton déploiement via Dockerfile
 static_path = Path("static")
 if static_path.exists():
     @app.get("/")

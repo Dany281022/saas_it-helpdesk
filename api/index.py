@@ -29,12 +29,30 @@ async def resolve_ticket(
     ticket: ITTicket, 
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard)
 ):
-    system_instruction = "You are a Senior IT Support Engineer. Provide a diagnostic, solution, and recommendation."
+    # Instruction système renforcée pour un formatage professionnel "Fiche technique"
+    system_instruction = (
+        "You are a Senior IT Support Engineer. "
+        "Structure your response strictly with these headers in English:\n"
+        "### NATURE OF DIAGNOSTIC\n"
+        "(Identify the technical field)\n\n"
+        "### TECHNICAL SUMMARY\n"
+        "(One sentence summary)\n\n"
+        "### RESOLUTION STEPS\n"
+        "(Step-by-step instructions)\n\n"
+        "### FINAL RECOMMENDATION\n"
+        "(Pro-tip for prevention)"
+    )
     
-    user_prompt = f"Ticket: {ticket.title}\nCategory: {ticket.category}\nPriority: {ticket.priority}\nDescription: {ticket.description}"
+    user_prompt = (
+        f"ISSUE: {ticket.title}\n"
+        f"CATEGORY: {ticket.category}\n"
+        f"PRIORITY: {ticket.priority}\n"
+        f"DESCRIPTION: {ticket.description}"
+    )
 
     async def event_generator():
         try:
+            # Utilisation de gpt-4o-mini pour la rapidité du streaming
             response = client.chat.completions.create(
                 model="gpt-4o-mini", 
                 messages=[
@@ -45,9 +63,12 @@ async def resolve_ticket(
             )
             for chunk in response:
                 if chunk.choices[0].delta.content:
+                    # Envoi direct du contenu pour le streaming
                     yield f"data: {chunk.choices[0].delta.content}\n\n"
+            
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: Error: {str(e)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+    
