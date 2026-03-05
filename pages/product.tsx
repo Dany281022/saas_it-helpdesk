@@ -25,9 +25,11 @@ function TicketResolverForm() {
   const [output, setOutput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Assure que chaque section commence sur une nouvelle ligne avec de l'espace
   const formatOutput = (text: string) => {
     return text
-      .replace(/### (Diagnostic|Solution|Steps|Recommendation|Conclusion|NATURE OF DIAGNOSTIC|TECHNICAL SUMMARY|RESOLUTION STEPS|FINAL RECOMMENDATION)/gi, '\n\n### $1\n\n')
+      .replace(/###/g, '\n\n###') // Force un saut de ligne avant chaque titre
+      .replace(/\n\n\n+/g, '\n\n') // Évite les espaces trop grands
       .trim();
   };
 
@@ -121,10 +123,12 @@ function TicketResolverForm() {
           <div className="p-8 prose prose-indigo max-w-none">
             <ReactMarkdown 
               remarkPlugins={[remarkGfm]}
+              className="whitespace-pre-line" // Important pour respecter les sauts de ligne
               components={{
-                h3: ({...props}) => <h3 className="text-sm uppercase tracking-wider font-black text-indigo-600 mt-6 mb-2 border-l-4 border-indigo-500 pl-3 bg-indigo-50 py-1" {...props} />,
-                p: ({...props}) => <p className="text-gray-700 leading-relaxed mb-4" {...props} />,
+                h3: ({...props}) => <h3 className="text-sm uppercase tracking-wider font-black text-indigo-600 mt-8 mb-3 border-l-4 border-indigo-500 pl-3 bg-indigo-50 py-2" {...props} />,
+                p: ({...props}) => <p className="text-gray-700 leading-relaxed mb-4 font-medium" {...props} />,
                 ul: ({...props}) => <ul className="list-disc pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
+                ol: ({...props}) => <ol className="list-decimal pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
                 strong: ({...props}) => <strong className="font-bold text-gray-900 bg-yellow-50 px-1" {...props} />,
               }}
             >
