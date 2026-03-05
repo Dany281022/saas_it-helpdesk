@@ -25,11 +25,13 @@ function TicketResolverForm() {
   const [output, setOutput] = useState<string>('');
   const [loading, setLoading] = useState<boolean>(false);
 
-  // Assure que chaque section commence sur une nouvelle ligne avec de l'espace
+  // LOGIQUE DE NETTOYAGE : Force les sauts de ligne pour éviter le texte "collé"
   const formatOutput = (text: string) => {
+    if (!text) return '';
     return text
-      .replace(/###/g, '\n\n###') // Force un saut de ligne avant chaque titre
-      .replace(/\n\n\n+/g, '\n\n') // Évite les espaces trop grands
+      .replace(/###/g, '\n\n### ') // Force un espace avant les titres
+      .replace(/(DIAGNOSTIC|SUMMARY|STEPS|RECOMMENDATION)([A-Za-z])/g, '$1\n$2') // Décolle le texte du titre
+      .replace(/\n\n\n+/g, '\n\n') // Évite trop de vide
       .trim();
   };
 
@@ -76,7 +78,7 @@ function TicketResolverForm() {
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="flex flex-col md:col-span-1">
             <label className="text-sm font-semibold mb-1 text-gray-700">Issue Subject</label>
-            <input type="text" placeholder="Ex: Printer not working" required value={subject} onChange={(e) => setSubject(e.target.value)} className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
+            <input type="text" placeholder="Ex: WiFi connection issue" required value={subject} onChange={(e) => setSubject(e.target.value)} className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
           </div>
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Category</label>
@@ -93,14 +95,14 @@ function TicketResolverForm() {
               <option value="Low">Low</option>
               <option value="Medium">Medium</option>
               <option value="High">High</option>
-              <option value="Urgent">Urgent / Critical</option>
+              <option value="Urgent">Urgent</option>
             </select>
           </div>
         </div>
 
         <div className="flex flex-col">
           <label className="text-sm font-semibold mb-1 text-gray-700">Detailed Description</label>
-          <textarea required rows={5} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-4 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Describe the technical issue in detail..." />
+          <textarea required rows={5} value={description} onChange={(e) => setDescription(e.target.value)} className="w-full p-4 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Describe the technical issue..." />
         </div>
 
         <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow-md transition-all active:scale-[0.98] disabled:opacity-50">
@@ -108,11 +110,11 @@ function TicketResolverForm() {
         </button>
       </form>
 
-      {/* Rendu optimisé style "Fiche d'intervention" */}
+      {/* AFFICHAGE STYLE "RAPPORT TECHNIQUE" (Comme ton ancien projet) */}
       {output && (
         <section className="mt-8 bg-white rounded-xl shadow-2xl border-t-8 border-indigo-600 overflow-hidden animate-in fade-in duration-500">
           <div className="bg-indigo-50 p-4 border-b border-indigo-100 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-indigo-800 flex items-center gap-2">
+            <h2 className="text-xl font-bold text-indigo-800 flex items-center gap-2 uppercase tracking-tight">
                <span>📋</span> IT Incident Report
             </h2>
             <span className="text-sm font-bold text-indigo-600 bg-white px-3 py-1 rounded-full shadow-sm">
@@ -120,20 +122,24 @@ function TicketResolverForm() {
             </span>
           </div>
           
-          <div className="p-8 prose prose-indigo max-w-none">
-            <ReactMarkdown 
-              remarkPlugins={[remarkGfm]}
-              className="whitespace-pre-line" // Important pour respecter les sauts de ligne
-              components={{
-                h3: ({...props}) => <h3 className="text-sm uppercase tracking-wider font-black text-indigo-600 mt-8 mb-3 border-l-4 border-indigo-500 pl-3 bg-indigo-50 py-2" {...props} />,
-                p: ({...props}) => <p className="text-gray-700 leading-relaxed mb-4 font-medium" {...props} />,
-                ul: ({...props}) => <ul className="list-disc pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
-                ol: ({...props}) => <ol className="list-decimal pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
-                strong: ({...props}) => <strong className="font-bold text-gray-900 bg-yellow-50 px-1" {...props} />,
-              }}
-            >
-              {formatOutput(output)}
-            </ReactMarkdown>
+          <div className="p-8">
+            <div className="prose prose-indigo max-w-none">
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  // Titres avec bannières bleues (Style Projet Médical)
+                  h3: ({node, ...props}) => (
+                    <h3 className="text-sm uppercase tracking-wider font-black text-indigo-600 mt-8 mb-4 border-l-4 border-indigo-500 pl-3 bg-indigo-50 py-2" {...props} />
+                  ),
+                  p: ({node, ...props}) => <p className="text-gray-700 leading-relaxed mb-4" {...props} />,
+                  ul: ({node, ...props}) => <ul className="list-disc pl-6 mb-4 space-y-2 text-gray-700" {...props} />,
+                  li: ({node, ...props}) => <li className="mb-1" {...props} />,
+                  strong: ({node, ...props}) => <strong className="font-bold text-gray-900 bg-yellow-50 px-1" {...props} />,
+                }}
+              >
+                {formatOutput(output)}
+              </ReactMarkdown>
+            </div>
           </div>
         </section>
       )}
