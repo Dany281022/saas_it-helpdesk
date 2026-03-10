@@ -1,32 +1,18 @@
 "use client";
 
 import React, { useState } from "react";
-// Importation des hooks et composants Clerk nécessaires
-import { useAuth, Protect, UserButton, useUser } from "@clerk/nextjs"; 
+import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// Composant d'affichage si l'utilisateur n'est pas Premium (Gating)
-const PricingTable = () => (
-  <div className="p-12 text-center border-2 border-dashed rounded-xl bg-gray-50 max-w-2xl mx-auto mt-20">
-    <h2 className="text-2xl font-bold mb-4 text-gray-800">Premium Plan Required</h2>
-    <p className="text-gray-600 mb-6">
-      You need an active <strong>Premium</strong> subscription to use the AI Ticket Resolver.
-    </p>
-    <button className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
-      Upgrade Now
-    </button>
-  </div>
-);
-
-// Formulaire principal (TicketRecord - Step 5)
+// Formulaire principal
 function TicketResolverForm() {
   const { getToken } = useAuth();
   const { user } = useUser();
-  
+
   const [ticketId, setTicketId] = useState<string>("");
   const [reportedBy, setReportedBy] = useState<string>(user?.fullName || "");
   const [issueCategory, setIssueCategory] = useState<string>("Software");
@@ -37,7 +23,7 @@ function TicketResolverForm() {
   const [loading, setLoading] = useState<boolean>(false);
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); 
+    e.preventDefault();
     setOutput("");
     setLoading(true);
 
@@ -91,35 +77,76 @@ function TicketResolverForm() {
         <span>🛠️</span> IT Ticket Resolver
       </h1>
 
-      <form onSubmit={handleSubmit} className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-200">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-200"
+      >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Ticket ID</label>
-            <input type="text" required value={ticketId} onChange={(e) => setTicketId(e.target.value)} className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Ex: TKT-2026-001" />
+            <input
+              type="text"
+              required
+              value={ticketId}
+              onChange={(e) => setTicketId(e.target.value)}
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Ex: TKT-2026-001"
+            />
           </div>
+
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Reported By</label>
-            <input type="text" required value={reportedBy} onChange={(e) => setReportedBy(e.target.value)} className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" />
+            <input
+              type="text"
+              required
+              value={reportedBy}
+              onChange={(e) => setReportedBy(e.target.value)}
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+            />
           </div>
+
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Category</label>
-            <select value={issueCategory} onChange={(e) => setIssueCategory(e.target.value)} className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white">
+            <select
+              value={issueCategory}
+              onChange={(e) => setIssueCategory(e.target.value)}
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
               <option value="Software">Software</option>
               <option value="Hardware">Hardware</option>
               <option value="Network">Network</option>
               <option value="Access">Access/Identity</option>
             </select>
           </div>
+
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Submission Date</label>
-            <DatePicker selected={submittedDate} onChange={(date) => setSubmittedDate(date)} className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 w-full" dateFormat="yyyy-MM-dd" />
+            <DatePicker
+              selected={submittedDate}
+              onChange={(date) => setSubmittedDate(date)}
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 w-full"
+              dateFormat="yyyy-MM-dd"
+            />
           </div>
         </div>
+
         <div className="flex flex-col">
           <label className="text-sm font-semibold mb-1 text-gray-700">Issue Description</label>
-          <textarea required rows={6} value={issueDescription} onChange={(e) => setIssueDescription(e.target.value)} className="w-full p-4 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500" placeholder="Describe the problem..." />
+          <textarea
+            required
+            rows={6}
+            value={issueDescription}
+            onChange={(e) => setIssueDescription(e.target.value)}
+            className="w-full p-4 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+            placeholder="Describe the problem..."
+          />
         </div>
-        <button type="submit" disabled={loading} className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow-md transition-all disabled:opacity-50">
+
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow-md transition-all disabled:opacity-50"
+        >
           {loading ? "Analyzing Ticket..." : "Get AI Solution"}
         </button>
       </form>
@@ -138,22 +165,20 @@ function TicketResolverForm() {
   );
 }
 
-// Point d'entrée principal avec Protection (Step 7)
+// Page Product avec protection par abonnement
 export default function Product() {
-  const { user } = useUser(); 
-
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 pt-10 pb-20">
       <div className="absolute top-4 right-4">
         <UserButton showName={true} afterSignOutUrl="/" />
       </div>
-      
-      <Protect 
-  condition={() => user?.publicMetadata?.role === "Premium"}
-  fallback={<PricingTable />}
->
-  <TicketResolverForm />
-</Protect>
+
+      <Protect
+        plan="premium_subscription"
+        fallback={<PricingTable />}
+      >
+        <TicketResolverForm />
+      </Protect>
     </main>
   );
 }
