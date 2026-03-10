@@ -178,7 +178,17 @@ function TicketResolverForm() {
 }
 
 export default function Product() {
-  const { has, isLoaded } = useAuth();
+  const { has, isLoaded, getToken } = useAuth();
+
+  React.useEffect(() => {
+    getToken().then(token => {
+      if (token) {
+        const payload = JSON.parse(atob(token.split('.')[1]));
+        console.log("JWT PAYLOAD:", JSON.stringify(payload, null, 2));
+        console.log("has premium_subscription:", has?.({ plan: "premium_subscription" }));
+      }
+    });
+  }, [isLoaded]);
 
   if (!isLoaded) return (
     <div className="flex items-center justify-center min-h-screen">
