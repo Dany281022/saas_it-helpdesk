@@ -4,8 +4,9 @@ import 'react-datepicker/dist/react-datepicker.css';
 import '../styles/globals.css';
 
 /**
- * Composant racine de l'application Next.js.
- * Enveloppe l'application avec ClerkProvider pour gérer l'authentification SaaS (Step 7).
+ * MyApp - Composant racine (Root)
+ * Fournit le contexte d'authentification Clerk à toute l'application.
+ * Indispensable pour le fonctionnement du middleware et du gating Premium (Step 7).
  */
 function MyApp({ Component, pageProps }: AppProps) {
   return (
@@ -13,7 +14,9 @@ function MyApp({ Component, pageProps }: AppProps) {
       publishableKey={process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
       {...pageProps}
     >
-      <Component {...pageProps} />
+      <div className="min-h-screen bg-gray-50">
+        <Component {...pageProps} />
+      </div>
     </ClerkProvider>
   );
 }
