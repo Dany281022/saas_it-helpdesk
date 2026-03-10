@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
+import { useAuth, UserButton, useUser, PricingTable } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
@@ -178,18 +178,23 @@ function TicketResolverForm() {
 }
 
 export default function Product() {
+  const { has, isLoaded } = useAuth();
+
+  if (!isLoaded) return (
+    <div className="flex items-center justify-center min-h-screen">
+      <p className="text-gray-500 text-lg">Loading...</p>
+    </div>
+  );
+
+  const hasPremium = has?.({ plan: "premium_subscription" });
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 pt-10 pb-20">
       <div className="absolute top-4 right-4">
         <UserButton showName={true} afterSignOutUrl="/" />
       </div>
 
-      <Protect
-        plan="premium_subscription"
-        fallback={<PricingFallback />}
-      >
-        <TicketResolverForm />
-      </Protect>
+      {hasPremium ? <TicketResolverForm /> : <PricingFallback />}
     </main>
   );
 }
