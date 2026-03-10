@@ -1,14 +1,26 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
+import { useAuth, UserButton, useUser, Protect } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// Formulaire principal
+// Fallback personnalisé pour les utilisateurs non-Premium
+const PricingFallback = () => (
+  <div className="p-12 text-center border-2 border-dashed rounded-xl bg-gray-50 max-w-2xl mx-auto mt-20">
+    <h2 className="text-2xl font-bold mb-4 text-gray-800">Premium Plan Required</h2>
+    <p className="text-gray-600 mb-6">
+      You need an active <strong>Premium</strong> subscription to use the AI Ticket Resolver.
+    </p>
+    <button className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
+      Upgrade Now
+    </button>
+  </div>
+);
+
 function TicketResolverForm() {
   const { getToken } = useAuth();
   const { user } = useUser();
@@ -58,7 +70,9 @@ function TicketResolverForm() {
           }
           setOutput((prev) => prev + ev.data);
         },
-        onclose() { setLoading(false); },
+        onclose() {
+          setLoading(false);
+        },
         onerror(err) {
           console.error("SSE Error:", err);
           controller.abort();
@@ -165,18 +179,17 @@ function TicketResolverForm() {
   );
 }
 
-// Page Product avec protection par abonnement
 export default function Product() {
+  const { user } = useUser();
+
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 pt-10 pb-20">
       <div className="absolute top-4 right-4">
         <UserButton showName={true} afterSignOutUrl="/" />
       </div>
 
-      <Protect
-        plan="premium_subscription"
-        fallback={<PricingTable />}
-      >
+      {/* Protection par abonnement Premium */}
+      <Protect plan="premium_subscription" fallback={<PricingFallback />}>
         <TicketResolverForm />
       </Protect>
     </main>
