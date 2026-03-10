@@ -149,15 +149,11 @@ export default function Product() {
       </div>
       
       <Protect 
-        condition={(has) => 
-          has({ role: "Premium" }) || 
-          user?.publicMetadata?.role === "Premium" || 
-          user?.publicMetadata?.plan === "premium_subscription"
-        }
-        fallback={<PricingTable />}
-      >
-        <TicketResolverForm />
-      </Protect>
+  condition={() => user?.publicMetadata?.role === "Premium"}
+  fallback={<PricingTable />}
+>
+  <TicketResolverForm />
+</Protect>
     </main>
   );
 }
