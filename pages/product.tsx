@@ -180,15 +180,13 @@ function TicketResolverForm() {
 }
 
 export default function Product() {
-  const { user } = useUser();
-
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 pt-10 pb-20">
       <div className="absolute top-4 right-4">
         <UserButton showName={true} afterSignOutUrl="/" />
       </div>
 
-      {/* Protection par abonnement Premium */}
+      {/* Protection Premium */}
       <Protect plan="premium_subscription" fallback={<PricingFallback />}>
         <TicketResolverForm />
       </Protect>
