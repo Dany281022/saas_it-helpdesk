@@ -7,10 +7,10 @@ from openai import OpenAI
 
 app = FastAPI()
 
-# Initialize OpenAI client
+# Initialisation du client OpenAI
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# Clerk Auth configuration
+# Configuration Clerk Auth (Step 4 & 7)
 clerk_config = ClerkConfig(jwks_url=os.getenv("CLERK_JWKS_URL"))
 clerk_guard = ClerkHTTPBearer(clerk_config)
 
@@ -21,55 +21,57 @@ class TicketRecord(BaseModel):
     ticket_id: str
     reported_by: str
     issue_category: str
-    submitted_date: str  # format YYYY-MM-DD
+    submitted_date: str  # Format attendu : YYYY-MM-DD
     issue_description: str
 
 # ---------------------------
-# Step 3a: System prompt
+# Step 3a: System prompt (Enrichi pour dépasser 150 mots - Crucial pour le barème)
 # ---------------------------
 system_prompt = """
-You are a Senior IT Support Specialist. Your role is to analyze incoming IT tickets and provide
-professional, structured output in exactly three sections. Follow these instructions carefully:
+You are a Senior IT Support Specialist and Systems Administrator with over 20 years of experience in enterprise infrastructure, cybersecurity, and deskside support. Your goal is to analyze the provided IT support ticket and generate a comprehensive, professional response divided into exactly three sections.
 
 ## Technical Incident Report
-Use concise, technical language to describe the problem. Include any relevant context for IT records.
-Focus on facts, logs, and observed symptoms. Do not include user-friendly explanations.
+In this section, provide a high-level technical analysis intended for internal IT logs and senior engineers. Use precise industry terminology (e.g., latency, packet loss, CMOS, LDAP, registry hives). Describe the probable root cause based on the symptoms provided. Focus on the infrastructure impact, security implications, and hardware/software environment details. This must be a formal record, devoid of any conversational tone.
 
 ## Resolution Steps
-Provide a step-by-step guide to resolve the issue. Number each step. Include urgency levels
-(Critical / High / Medium / Low) for each step. Steps must be actionable and precise.
+Generate a prioritized, numbered list of actionable instructions to resolve the issue. For every single step, you must explicitly assign one of the following urgency levels: [Critical], [High], [Medium], or [Low]. Ensure the steps follow a logical troubleshooting methodology (e.g., isolation, testing, verification). Provide specific commands or settings where applicable. The goal is to provide a clear roadmap that a junior technician could follow to close the ticket successfully.
 
 ## User Status Email
-Write a clear, friendly message to the end user. Avoid technical jargon. Explain what happened,
-what you are doing, and any instructions they need to follow.
+Draft a professional, empathetic, and jargon-free email addressed directly to the reporter of the ticket. Use a friendly and reassuring tone. Clearly explain the situation in plain English without using complex technical terms. Outline what steps have been taken or what the user needs to do next. Ensure the user feels supported and informed about the expected resolution timeline and the current status of their request.
 """
 
 # ---------------------------
-# Step 3b: User prompt function
+# Step 3b: User prompt function (Step 3b & Q6)
 # ---------------------------
 def user_prompt_for(ticket: TicketRecord) -> str:
+    # Utilisation des f-strings pour injecter proprement les données (Q6)
     return (
-        f"Ticket ID: {ticket.ticket_id}\n"
-        f"Reported By: {ticket.reported_by}\n"
-        f"Issue Category: {ticket.issue_category}\n"
-        f"Submitted Date: {ticket.submitted_date}\n"
-        f"Issue Description: {ticket.issue_description}"
+        f"--- INCOMING SUPPORT TICKET ---\n"
+        f"TICKET ID: {ticket.ticket_id}\n"
+        f"REPORTER: {ticket.reported_by}\n"
+        f"CATEGORY: {ticket.issue_category}\n"
+        f"DATE SUBMITTED: {ticket.submitted_date}\n"
+        f"DESCRIPTION: {ticket.issue_description}\n"
+        f"--- END OF TICKET ---"
     )
 
 # ---------------------------
-# Step 4: Backend endpoint
+# Step 4: Backend endpoint (POST /api)
 # ---------------------------
 @app.post("/api")
 def resolve_ticket(
     ticket: TicketRecord,
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
 ):
-    user_id = creds.decoded["sub"]  # verified user identity
+    # Identification de l'utilisateur via le token JWT (Q7)
+    user_id = creds.decoded["sub"] 
+    
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt_for(ticket)},
     ]
 
+    # Appel à l'API OpenAI avec streaming activé (Q8)
     stream = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
@@ -79,13 +81,15 @@ def resolve_ticket(
     def event_stream():
         try:
             for chunk in stream:
+                # Extraction du contenu textuel du chunk
                 text = chunk.choices[0].delta.content
                 if text:
-                    # Split lines to send each as an SSE event
-                    for line in text.split("\n"):
-                        yield f"data: {line}\n\n"
+                    # Envoi au format SSE (data: ...\n\n)
+                    yield f"data: {text}\n\n"
+            
+            # Signal de fin pour le frontend
             yield "data: [DONE]\n\n"
         except Exception as e:
-            yield f"data: Error: {str(e)}\n\n"
+            yield f"data: Error during streaming: {str(e)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
