@@ -1,74 +1,91 @@
 import os
-from fastapi import FastAPI, Request, Depends
+from fastapi import FastAPI, Depends
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
-from openai import OpenAI
+from pydantic import BaseModel
 from fastapi_clerk_auth import ClerkConfig, ClerkHTTPBearer, HTTPAuthorizationCredentials
+from openai import OpenAI
 
 app = FastAPI()
 
-# Initialize OpenAI
+# Initialize OpenAI client
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# Clerk Auth Configuration
+# Clerk Auth configuration
 clerk_config = ClerkConfig(jwks_url=os.getenv("CLERK_JWKS_URL"))
 clerk_guard = ClerkHTTPBearer(clerk_config)
 
-class ITTicket(BaseModel):
-    title: str = Field(..., description="Subject of the IT issue")
-    category: str = Field(..., description="Hardware, Software, Network, or Access")
-    priority: str = Field(..., description="Low, Medium, High, or Urgent")
-    description: str = Field(..., description="Detailed explanation")
+# ---------------------------
+# Step 2: TicketRecord model
+# ---------------------------
+class TicketRecord(BaseModel):
+    ticket_id: str
+    reported_by: str
+    issue_category: str
+    submitted_date: str  # format YYYY-MM-DD
+    issue_description: str
 
-@app.get("/health")
-def health_check():
-    return {"status": "healthy"}
+# ---------------------------
+# Step 3a: System prompt
+# ---------------------------
+system_prompt = """
+You are a Senior IT Support Specialist. Your role is to analyze incoming IT tickets and provide
+professional, structured output in exactly three sections. Follow these instructions carefully:
 
-@app.post("/api/ticket")
-async def resolve_ticket(
-    ticket: ITTicket, 
-    creds: HTTPAuthorizationCredentials = Depends(clerk_guard)
+## Technical Incident Report
+Use concise, technical language to describe the problem. Include any relevant context for IT records.
+Focus on facts, logs, and observed symptoms. Do not include user-friendly explanations.
+
+## Resolution Steps
+Provide a step-by-step guide to resolve the issue. Number each step. Include urgency levels
+(Critical / High / Medium / Low) for each step. Steps must be actionable and precise.
+
+## User Status Email
+Write a clear, friendly message to the end user. Avoid technical jargon. Explain what happened,
+what you are doing, and any instructions they need to follow.
+"""
+
+# ---------------------------
+# Step 3b: User prompt function
+# ---------------------------
+def user_prompt_for(ticket: TicketRecord) -> str:
+    return (
+        f"Ticket ID: {ticket.ticket_id}\n"
+        f"Reported By: {ticket.reported_by}\n"
+        f"Issue Category: {ticket.issue_category}\n"
+        f"Submitted Date: {ticket.submitted_date}\n"
+        f"Issue Description: {ticket.issue_description}"
+    )
+
+# ---------------------------
+# Step 4: Backend endpoint
+# ---------------------------
+@app.post("/api")
+def resolve_ticket(
+    ticket: TicketRecord,
+    creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
 ):
-    # Instruction système renforcée pour un formatage professionnel "Fiche technique"
-    system_instruction = (
-        "You are a Senior IT Support Engineer. "
-        "Structure your response strictly with these headers in English:\n"
-        "### NATURE OF DIAGNOSTIC\n"
-        "(Identify the technical field)\n\n"
-        "### TECHNICAL SUMMARY\n"
-        "(One sentence summary)\n\n"
-        "### RESOLUTION STEPS\n"
-        "(Step-by-step instructions)\n\n"
-        "### FINAL RECOMMENDATION\n"
-        "(Pro-tip for prevention)"
-    )
-    
-    user_prompt = (
-        f"ISSUE: {ticket.title}\n"
-        f"CATEGORY: {ticket.category}\n"
-        f"PRIORITY: {ticket.priority}\n"
-        f"DESCRIPTION: {ticket.description}"
+    user_id = creds.decoded["sub"]  # verified user identity
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt_for(ticket)},
+    ]
+
+    stream = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=messages,
+        stream=True,
     )
 
-    async def event_generator():
+    def event_stream():
         try:
-            # Utilisation de gpt-4o-mini pour la rapidité du streaming
-            response = client.chat.completions.create(
-                model="gpt-4o-mini", 
-                messages=[
-                    {"role": "system", "content": system_instruction},
-                    {"role": "user", "content": user_prompt}
-                ],
-                stream=True
-            )
-            for chunk in response:
-                if chunk.choices[0].delta.content:
-                    # Envoi direct du contenu pour le streaming
-                    yield f"data: {chunk.choices[0].delta.content}\n\n"
-            
+            for chunk in stream:
+                text = chunk.choices[0].delta.content
+                if text:
+                    # Split lines to send each as an SSE event
+                    for line in text.split("\n"):
+                        yield f"data: {line}\n\n"
             yield "data: [DONE]\n\n"
         except Exception as e:
             yield f"data: Error: {str(e)}\n\n"
 
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
-    
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
