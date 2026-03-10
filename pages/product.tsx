@@ -8,11 +8,12 @@ import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
+// Composant PricingTable pour le "Gating" de l'abonnement (Step 7)
 const PricingTable = () => (
   <div className="p-12 text-center border-2 border-dashed rounded-xl bg-gray-50 max-w-2xl mx-auto mt-20">
     <h2 className="text-2xl font-bold mb-4 text-gray-800">Premium Plan Required</h2>
     <p className="text-gray-600 mb-6">
-      You need an active subscription to use the AI Ticket Resolver.
+      You need an active <strong>premium_subscription</strong> to use the AI Ticket Resolver.
     </p>
     <button className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
       Upgrade Now
@@ -22,46 +23,47 @@ const PricingTable = () => (
 
 function TicketResolverForm() {
   const { getToken, user } = useAuth();
+  
+  // États pour les 5 champs du modèle TicketRecord (Step 5)
   const [ticketId, setTicketId] = useState<string>("");
   const [reportedBy, setReportedBy] = useState<string>(user?.fullName || "");
   const [issueCategory, setIssueCategory] = useState<string>("Software");
   const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
-  const [issueDescription, setIssueDescription] = useState<string>("");
+  const [issueDescription, setIssueDescription] = useState<string>(" ");
+
+  // États pour la gestion de l'affichage
   const [output, setOutput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
 
-  const formatOutput = (text: string) => {
-    if (!text) return "";
-    return text
-      .replace(/###\s?/g, "\n\n### ")
-      .replace(/(DIAGNOSTIC|SUMMARY|STEPS|RECOMMENDATION)([0-9]|[A-Z])/g, "$1\n\n$2")
-      .replace(/(\d\.)\s?/g, "\n\n$1 ")
-      .replace(/\s-\s/g, "\n\n- ")
-      .replace(/(SUMMARY|RECOMMENDATION)\s+([A-Z])/g, "$1\n\n$2")
-      .replace(/\n\n\n+/g, "\n\n")
-      .trim();
-  };
-
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+    e.preventDefault(); // Empêche le rechargement de la page (Q11)
     setOutput("");
     setLoading(true);
 
+    // Initialisation de l'AbortController (requis pour Q12)
+    const controller = new AbortController();
+
     try {
       const jwt = await getToken();
-      if (!jwt) throw new Error("Authentication required");
+      if (!jwt) {
+        setOutput("Authentication required. Please sign in.");
+        setLoading(false);
+        return;
+      }
 
       await fetchEventSource("/api", {
         method: "POST",
+        signal: controller.signal, // Liaison du signal d'annulation
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${jwt}`,
         },
         body: JSON.stringify({
+          // Mapping CamelCase (JS) vers snake_case (Pydantic Backend) (Step 6)
           ticket_id: ticketId,
           reported_by: reportedBy,
           issue_category: issueCategory,
-          submitted_date: submittedDate?.toISOString().split("T")[0],
+          submitted_date: submittedDate?.toISOString().split("T")[0], // Format YYYY-MM-DD (Q10)
           issue_description: issueDescription,
         }),
         onmessage(ev) {
@@ -69,13 +71,15 @@ function TicketResolverForm() {
             setLoading(false);
             return;
           }
+          // Accumulation des morceaux (chunks) du stream
           setOutput((prev) => prev + ev.data);
         },
         onclose() {
           setLoading(false);
         },
         onerror(err) {
-          console.error(err);
+          console.error("SSE Error:", err);
+          controller.abort(); // Annulation propre en cas d'erreur (Q12)
           setLoading(false);
         },
       });
@@ -128,6 +132,8 @@ function TicketResolverForm() {
               <option value="Hardware">Hardware</option>
               <option value="Network">Network</option>
               <option value="Access">Access/Identity</option>
+              <option value="Email">Email</option>
+              <option value="Other">Other</option>
             </select>
           </div>
 
@@ -136,7 +142,7 @@ function TicketResolverForm() {
             <DatePicker
               selected={submittedDate}
               onChange={(date) => setSubmittedDate(date)}
-              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 w-full"
               dateFormat="yyyy-MM-dd"
             />
           </div>
@@ -146,11 +152,11 @@ function TicketResolverForm() {
           <label className="text-sm font-semibold mb-1 text-gray-700">Issue Description</label>
           <textarea
             required
-            rows={5}
+            rows={8} // Respecte la consigne de la Step 5
             value={issueDescription}
             onChange={(e) => setIssueDescription(e.target.value)}
             className="w-full p-4 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
-            placeholder="Describe the technical issue..."
+            placeholder="Describe the problem in detail..."
           />
         </div>
 
@@ -167,16 +173,13 @@ function TicketResolverForm() {
         <section className="mt-8 bg-white rounded-xl shadow-2xl border-t-8 border-indigo-600 overflow-hidden animate-in fade-in duration-500">
           <div className="bg-indigo-50 p-4 border-b border-indigo-100 flex justify-between items-center">
             <h2 className="text-xl font-bold text-indigo-800 flex items-center gap-2 uppercase tracking-tight">
-              <span>📋</span> IT Incident Report
+              <span>📋</span> AI Resolution Output
             </h2>
-            <span className="text-sm font-bold text-indigo-600 bg-white px-3 py-1 rounded-full shadow-sm">
-              DATE: {new Date().toLocaleDateString()}
-            </span>
           </div>
 
           <div className="p-8">
             <div className="prose prose-indigo max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{formatOutput(output)}</ReactMarkdown>
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{output}</ReactMarkdown>
             </div>
           </div>
         </section>
@@ -187,13 +190,23 @@ function TicketResolverForm() {
 
 export default function Product() {
   return (
-    <main className="min-h-screen bg-gray-50 pt-10 pb-20">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 pt-10 pb-20">
       <div className="absolute top-4 right-4">
-        <UserButton afterSignOutUrl="/" />
+        <UserButton showName={true} afterSignOutUrl="/" />
       </div>
-      <Protect fallback={<PricingTable />}>
-        <TicketResolverForm />
+      
+      {/* Protection par abonnement Premium (Step 7) */}
+      <Protect 
+        plan="premium_subscription" 
+        fallback={<PricingTable />}
+      >
+        <TicketForm />
       </Protect>
     </main>
   );
+}
+
+// Alias pour correspondre au nom attendu dans le composant Product
+function TicketForm() {
+    return <TicketResolverForm />;
 }
