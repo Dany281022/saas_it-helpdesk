@@ -186,8 +186,13 @@ export default function Product() {
         <UserButton showName={true} afterSignOutUrl="/" />
       </div>
 
-      {/* Protection Premium */}
-      <Protect plan="premium_subscription" fallback={<PricingFallback />}>
+      {/* CORRECTION : On utilise une condition manuelle sur les Public Metadata 
+        pour éviter le blocage du système de paiement Stripe.
+      */}
+      <Protect 
+        condition={(has) => has({ metadata: { plan: "premium_subscription" } })} 
+        fallback={<PricingFallback />}
+      >
         <TicketResolverForm />
       </Protect>
     </main>
