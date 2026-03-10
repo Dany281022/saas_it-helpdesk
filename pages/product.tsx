@@ -13,7 +13,7 @@ const PricingTable = () => (
   <div className="p-12 text-center border-2 border-dashed rounded-xl bg-gray-50 max-w-2xl mx-auto mt-20">
     <h2 className="text-2xl font-bold mb-4 text-gray-800">Premium Plan Required</h2>
     <p className="text-gray-600 mb-6">
-      You need an active <strong>premium_subscription</strong> to use the AI Ticket Resolver.
+      You need an active <strong>Premium</strong> subscription to use the AI Ticket Resolver.
     </p>
     <button className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
       Upgrade Now
@@ -29,18 +29,17 @@ function TicketResolverForm() {
   const [reportedBy, setReportedBy] = useState<string>(user?.fullName || "");
   const [issueCategory, setIssueCategory] = useState<string>("Software");
   const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
-  const [issueDescription, setIssueDescription] = useState<string>(" ");
+  const [issueDescription, setIssueDescription] = useState<string>("");
 
   // États pour la gestion de l'affichage
   const [output, setOutput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
 
   async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault(); // Empêche le rechargement de la page (Q11)
+    e.preventDefault(); 
     setOutput("");
     setLoading(true);
 
-    // Initialisation de l'AbortController (requis pour Q12)
     const controller = new AbortController();
 
     try {
@@ -53,17 +52,16 @@ function TicketResolverForm() {
 
       await fetchEventSource("/api", {
         method: "POST",
-        signal: controller.signal, // Liaison du signal d'annulation
+        signal: controller.signal,
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${jwt}`,
         },
         body: JSON.stringify({
-          // Mapping CamelCase (JS) vers snake_case (Pydantic Backend) (Step 6)
           ticket_id: ticketId,
           reported_by: reportedBy,
           issue_category: issueCategory,
-          submitted_date: submittedDate?.toISOString().split("T")[0], // Format YYYY-MM-DD (Q10)
+          submitted_date: submittedDate?.toISOString().split("T")[0],
           issue_description: issueDescription,
         }),
         onmessage(ev) {
@@ -71,7 +69,6 @@ function TicketResolverForm() {
             setLoading(false);
             return;
           }
-          // Accumulation des morceaux (chunks) du stream
           setOutput((prev) => prev + ev.data);
         },
         onclose() {
@@ -79,7 +76,7 @@ function TicketResolverForm() {
         },
         onerror(err) {
           console.error("SSE Error:", err);
-          controller.abort(); // Annulation propre en cas d'erreur (Q12)
+          controller.abort();
           setLoading(false);
         },
       });
@@ -152,7 +149,7 @@ function TicketResolverForm() {
           <label className="text-sm font-semibold mb-1 text-gray-700">Issue Description</label>
           <textarea
             required
-            rows={8} // Respecte la consigne de la Step 5
+            rows={8}
             value={issueDescription}
             onChange={(e) => setIssueDescription(e.target.value)}
             className="w-full p-4 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
@@ -170,17 +167,14 @@ function TicketResolverForm() {
       </form>
 
       {output && (
-        <section className="mt-8 bg-white rounded-xl shadow-2xl border-t-8 border-indigo-600 overflow-hidden animate-in fade-in duration-500">
-          <div className="bg-indigo-50 p-4 border-b border-indigo-100 flex justify-between items-center">
-            <h2 className="text-xl font-bold text-indigo-800 flex items-center gap-2 uppercase tracking-tight">
+        <section className="mt-8 bg-white rounded-xl shadow-2xl border-t-8 border-indigo-600 overflow-hidden">
+          <div className="bg-indigo-50 p-4 border-b border-indigo-100">
+            <h2 className="text-xl font-bold text-indigo-800 flex items-center gap-2 uppercase">
               <span>📋</span> AI Resolution Output
             </h2>
           </div>
-
-          <div className="p-8">
-            <div className="prose prose-indigo max-w-none">
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{output}</ReactMarkdown>
-            </div>
+          <div className="p-8 prose prose-indigo max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{output}</ReactMarkdown>
           </div>
         </section>
       )}
@@ -195,9 +189,11 @@ export default function Product() {
         <UserButton showName={true} afterSignOutUrl="/" />
       </div>
       
-      {/* Protection par abonnement Premium (Step 7) */}
+      {/* IMPORTANT: J'ai changé "premium_subscription" par "Premium" 
+          pour correspondre à ton Dashboard Clerk.
+      */}
       <Protect 
-        plan="premium_subscription" 
+        role="Premium" 
         fallback={<PricingTable />}
       >
         <TicketForm />
@@ -206,7 +202,6 @@ export default function Product() {
   );
 }
 
-// Alias pour correspondre au nom attendu dans le composant Product
 function TicketForm() {
     return <TicketResolverForm />;
 }
