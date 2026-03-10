@@ -1,23 +1,20 @@
 "use client";
 
 import React, { useState } from "react";
-import { useAuth, UserButton, useUser, Protect } from "@clerk/nextjs";
+import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
-// Fallback personnalisé pour les utilisateurs non-Premium
 const PricingFallback = () => (
-  <div className="p-12 text-center border-2 border-dashed rounded-xl bg-gray-50 max-w-2xl mx-auto mt-20">
-    <h2 className="text-2xl font-bold mb-4 text-gray-800">Premium Plan Required</h2>
-    <p className="text-gray-600 mb-6">
+  <div className="px-4 py-12 text-center max-w-3xl mx-auto mt-10">
+    <h2 className="text-2xl font-bold mb-2 text-gray-800">Premium Plan Required</h2>
+    <p className="text-gray-600 mb-8">
       You need an active <strong>Premium</strong> subscription to use the AI Ticket Resolver.
     </p>
-    <button className="bg-indigo-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-indigo-700 transition-colors">
-      Upgrade Now
-    </button>
+    <PricingTable />
   </div>
 );
 
@@ -30,7 +27,6 @@ function TicketResolverForm() {
   const [issueCategory, setIssueCategory] = useState<string>("Software");
   const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
   const [issueDescription, setIssueDescription] = useState<string>("");
-
   const [output, setOutput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
 
@@ -130,6 +126,8 @@ function TicketResolverForm() {
               <option value="Hardware">Hardware</option>
               <option value="Network">Network</option>
               <option value="Access">Access/Identity</option>
+              <option value="Email">Email</option>
+              <option value="Other">Other</option>
             </select>
           </div>
 
@@ -186,11 +184,8 @@ export default function Product() {
         <UserButton showName={true} afterSignOutUrl="/" />
       </div>
 
-      {/* CORRECTION : On utilise une condition manuelle sur les Public Metadata 
-        pour éviter le blocage du système de paiement Stripe.
-      */}
-      <Protect 
-        condition={(has) => has({ metadata: { plan: "premium_subscription" } })} 
+      <Protect
+        plan="premium_subscription"
         fallback={<PricingFallback />}
       >
         <TicketResolverForm />
