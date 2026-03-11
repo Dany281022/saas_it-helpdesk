@@ -1,154 +1,186 @@
 "use client";
 
 import React, { useState } from "react";
-import { UserButton, Protect, PricingTable } from "@clerk/nextjs";
+import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+import { fetchEventSource } from "@microsoft/fetch-event-source";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
-/** * COMPOSANT TICKETFORM (Respectant strictement les consignes du prof)
- */
+const PricingFallback = () => (
+  <div className="container mx-auto px-4 py-12 text-center">
+    <h2 className="text-2xl font-bold mb-4 text-gray-800">Premium Plan Required</h2>
+    <p className="text-gray-600 mb-8">
+      You need an active <strong>Premium</strong> subscription to use the AI Ticket Resolver.
+    </p>
+    <PricingTable />
+  </div>
+);
+
 function TicketForm() {
-  // --- STATE VARIABLES ---
-  const [ticketId, setTicketId] = useState("");
-  const [reportedBy, setReportedBy] = useState("");
-  const [issueCategory, setIssueCategory] = useState("Software");
-  const [submittedDate, setSubmittedDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
-  const [issueDescription, setIssueDescription] = useState("");
-  const [output, setOutput] = useState(""); // Accumulates streamed markdown
-  const [loading, setLoading] = useState(false);
+  const { getToken } = useAuth();
+  const { user } = useUser();
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const [ticketId, setTicketId] = useState<string>("");
+  const [reportedBy, setReportedBy] = useState<string>(user?.fullName || "");
+  const [issueCategory, setIssueCategory] = useState<string>("Software");
+  const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
+  const [issueDescription, setIssueDescription] = useState<string>("");
+  const [output, setOutput] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
+
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    setOutput("");
     setLoading(true);
-    setOutput(""); // Reset l'output avant l'appel
 
-    // Simulation de l'appel API (Streamed Markdown)
-    setTimeout(() => {
-      setOutput("### Analyse IA\n\n**Solution proposée :** \n1. Vérifiez les branchements.\n2. Redémarrez le routeur.");
+    const jwt = await getToken();
+    if (!jwt) {
+      setOutput("Authentication required.");
       setLoading(false);
-    }, 2000);
-  };
+      return;
+    }
+
+    const controller = new AbortController();
+
+    await fetchEventSource("/api", {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${jwt}`,
+      },
+      body: JSON.stringify({
+        ticket_id: ticketId,
+        reported_by: reportedBy,
+        issue_category: issueCategory,
+        submitted_date: submittedDate?.toISOString().split("T")[0],
+        issue_description: issueDescription,
+      }),
+      onmessage(ev) {
+        if (ev.data === "[DONE]") {
+          setLoading(false);
+          return;
+        }
+        setOutput((prev) => prev + ev.data);
+      },
+      onclose() {
+        setLoading(false);
+      },
+      onerror(err) {
+        console.error("SSE Error:", err);
+        controller.abort();
+        setLoading(false);
+      },
+    });
+  }
 
   return (
-    <div className="max-w-3xl mx-auto p-8 bg-white rounded-2xl shadow-xl border border-blue-100 mt-5">
-      <h1 className="text-2xl font-bold mb-6 text-slate-800 underline decoration-blue-500">Ticket Submission Form</h1>
-      
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        
-        {/* Ticket ID */}
+    <div className="container mx-auto px-4 py-8 max-w-4xl">
+      <h1 className="text-3xl font-bold mb-8 text-center text-gray-900 flex items-center justify-center gap-3">
+        <span>🛠️</span> IT Ticket Resolver
+      </h1>
+
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-200"
+      >
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="flex flex-col">
+            <label className="text-sm font-semibold mb-1 text-gray-700">Ticket ID</label>
+            <input
+              type="text"
+              required
+              value={ticketId}
+              onChange={(e) => setTicketId(e.target.value)}
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="e.g. TKT-20240312-001"
+            />
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-sm font-semibold mb-1 text-gray-700">Reported By</label>
+            <input
+              type="text"
+              required
+              value={reportedBy}
+              onChange={(e) => setReportedBy(e.target.value)}
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="Name or employee ID"
+            />
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-sm font-semibold mb-1 text-gray-700">Issue Category</label>
+            <select
+              value={issueCategory}
+              onChange={(e) => setIssueCategory(e.target.value)}
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 bg-white"
+            >
+              <option value="Network">Network</option>
+              <option value="Hardware">Hardware</option>
+              <option value="Software">Software</option>
+              <option value="Access">Access</option>
+              <option value="Email">Email</option>
+              <option value="Other">Other</option>
+            </select>
+          </div>
+
+          <div className="flex flex-col">
+            <label className="text-sm font-semibold mb-1 text-gray-700">Submission Date</label>
+            <DatePicker
+              selected={submittedDate}
+              onChange={(date) => setSubmittedDate(date)}
+              className="p-2 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500 w-full"
+              dateFormat="yyyy-MM-dd"
+            />
+          </div>
+        </div>
+
         <div className="flex flex-col">
-          <label className="font-semibold text-slate-700 mb-1">Ticket ID</label>
-          <input 
-            type="text" 
-            value={ticketId}
-            onChange={(e) => setTicketId(e.target.value)}
-            placeholder="e.g. TKT-20240312-001"
-            className="p-2 border rounded-md border-slate-300 outline-blue-500"
+          <label className="text-sm font-semibold mb-1 text-gray-700">Issue Description</label>
+          <textarea
             required
-          />
-        </div>
-
-        {/* Reported By */}
-        <div className="flex flex-col">
-          <label className="font-semibold text-slate-700 mb-1">Reported By</label>
-          <input 
-            type="text" 
-            value={reportedBy}
-            onChange={(e) => setReportedBy(e.target.value)}
-            placeholder="Name or employee ID"
-            className="p-2 border rounded-md border-slate-300 outline-blue-500"
-            required
-          />
-        </div>
-
-        {/* Issue Category (Select Dropdown) */}
-        <div className="flex flex-col">
-          <label className="font-semibold text-slate-700 mb-1">Issue Category</label>
-          <select 
-            value={issueCategory}
-            onChange={(e) => setIssueCategory(e.target.value)}
-            className="p-2 border rounded-md border-slate-300 bg-white"
-          >
-            <option value="Network">Network</option>
-            <option value="Hardware">Hardware</option>
-            <option value="Software">Software</option>
-            <option value="Access">Access</option>
-            <option value="Email">Email</option>
-            <option value="Other">Other</option>
-          </select>
-        </div>
-
-        {/* Submission Date (DatePicker) */}
-        <div className="flex flex-col">
-          <label className="font-semibold text-slate-700 mb-1">Submission Date</label>
-          <input 
-            type="date" 
-            value={submittedDate}
-            onChange={(e) => setSubmittedDate(e.target.value)}
-            className="p-2 border rounded-md border-slate-300"
-          />
-        </div>
-
-        {/* Issue Description (TextArea - 8 rows) */}
-        <div className="flex flex-col md:col-span-2">
-          <label className="font-semibold text-slate-700 mb-1">Issue Description</label>
-          <textarea 
             rows={8}
             value={issueDescription}
             onChange={(e) => setIssueDescription(e.target.value)}
+            className="w-full p-4 border rounded-lg outline-none focus:ring-2 focus:ring-indigo-500"
             placeholder="Describe the problem in detail..."
-            className="p-3 border rounded-md border-slate-300 outline-blue-500"
-            required
           />
         </div>
 
-        {/* Submit Button (Disabled while loading) */}
-        <div className="md:col-span-2">
-          <button 
-            type="submit"
-            disabled={loading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition disabled:opacity-50 shadow-md"
-          >
-            {loading ? "Request in flight..." : "Submit Ticket"}
-          </button>
-        </div>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg shadow-md transition-all disabled:opacity-50"
+        >
+          {loading ? "Analyzing Ticket..." : "Get AI Solution"}
+        </button>
       </form>
 
-      {/* Output Display (Only visible if output exists) */}
       {output && (
-        <div className="mt-8 p-6 bg-slate-50 rounded-xl border-l-4 border-blue-500 animate-pulse-once">
-          <h3 className="text-sm font-bold text-blue-600 mb-2 uppercase tracking-widest">AI Result (Markdown)</h3>
-          <div className="prose prose-slate max-w-none text-slate-800 italic">
-            {output}
+        <section className="mt-8 bg-white rounded-xl shadow-2xl border-t-8 border-indigo-600 overflow-hidden">
+          <div className="bg-indigo-50 p-4 border-b border-indigo-100">
+            <h2 className="text-xl font-bold text-indigo-800 uppercase">📋 AI Resolution Output</h2>
           </div>
-        </div>
+          <div className="p-8 prose prose-indigo max-w-none">
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{output}</ReactMarkdown>
+          </div>
+        </section>
       )}
     </div>
   );
 }
 
-/** * FALLBACK COMPONENT
- */
-const PricingFallback = () => (
-  <div className="container mx-auto px-4 py-16 text-center">
-    <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-2xl mx-auto">
-      <h2 className="text-3xl font-black text-gray-900 mb-4">🚀 Premium Required</h2>
-      <p className="text-gray-600 mb-10">Choose a plan to access the IT Help Desk Ticket Resolver.</p>
-      <PricingTable />
-    </div>
-  </div>
-);
-
-/**
- * MAIN PAGE
- */
 export default function Product() {
   return (
-    <main className="min-h-screen bg-slate-50 pt-10 pb-20 px-4 font-sans">
-      <div className="max-w-6xl mx-auto flex justify-end mb-6">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      <div className="absolute top-4 right-4">
         <UserButton showName={true} />
       </div>
-
       <Protect
-        condition={(has) => has({ plan: "premium_subscription" }) || true}
+        plan="premium_subscription"
         fallback={<PricingFallback />}
       >
         <TicketForm />
