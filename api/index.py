@@ -15,7 +15,10 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 clerk_config = ClerkConfig(jwks_url=os.getenv("CLERK_JWKS_URL"))
 clerk_guard = ClerkHTTPBearer(clerk_config)
 
-# Step 2: Data Model
+
+# -----------------------------
+# Step 2 — Data Model
+# -----------------------------
 class TicketRecord(BaseModel):
     ticket_id: str
     reported_by: str
@@ -23,54 +26,90 @@ class TicketRecord(BaseModel):
     submitted_date: str
     issue_description: str
 
-# Step 3a: Design the System Prompt (Strict Structure)
+
+# -----------------------------
+# Step 3a — System Prompt
+# -----------------------------
 system_prompt = """
-You are a Senior IT Support Specialist. Analyze the ticket and provide a response STRICTLY following this markdown structure:
+You are a Senior IT Support Specialist working in an enterprise IT department.
+
+Your task is to analyze incoming IT support tickets and produce a professional report.
+
+You MUST follow this exact markdown structure and produce ONLY these three sections.
 
 ## Technical Incident Report
-[Provide a 2-3 paragraph technical analysis using professional terminology. Mention probable root causes and affected infrastructure components.]
+Write 2–3 professional paragraphs explaining:
+• the problem
+• possible root causes
+• affected systems or infrastructure
+• potential productivity or security impact
 
 ---
 
 ## Resolution Steps
-[Provide a numbered list. Each step MUST include a priority: **Critical**, **High**, **Medium**, or **Low**.]
+Provide a numbered list of troubleshooting steps.
 
-1. **Step Name – Priority**
-   - Actionable instruction.
-   - Command (if applicable): ```command```
+Each step MUST contain:
+• a short title
+• a priority label (**Critical**, **High**, **Medium**, **Low**)
+• clear actionable instructions
+• commands when relevant
+
+Example format:
+
+1. **Verify VPN Gateway – Critical**
+   - Check if the VPN gateway is operational
+   - Command: `ping <VPN_IP>`
 
 ---
 
 ## User Status Email
-**Subject:** [Professional Subject Line]
+
+**Subject:** Short professional subject
 
 Dear [User Name],
 
-[A polite, jargon-free explanation for the user. Outline the current status and next steps.]
+Write a polite explanation in simple language for the user.
+Avoid technical jargon. Explain what the problem is and what IT is doing to resolve it.
 
-Best regards,
+Best regards  
 IT Support Team
+
+IMPORTANT RULES:
+- Produce exactly THREE sections
+- Do NOT repeat headings
+- Use clean markdown formatting
 """
 
-# Step 3b: User Prompt Function
-def user_prompt_for(ticket: TicketRecord) -> str:
-    return (
-        f"--- INCOMING SUPPORT TICKET ---\n"
-        f"TICKET ID: {ticket.ticket_id}\n"
-        f"REPORTER: {ticket.reported_by}\n"
-        f"CATEGORY: {ticket.issue_category}\n"
-        f"DATE SUBMITTED: {ticket.submitted_date}\n"
-        f"DESCRIPTION: {ticket.issue_description}\n"
-        f"--- END OF TICKET ---"
-    )
 
-# Step 4: Build the Backend Endpoint
+# -----------------------------
+# Step 3b — User Prompt
+# -----------------------------
+def user_prompt_for(ticket: TicketRecord) -> str:
+    return f"""
+IT SUPPORT TICKET
+
+Ticket ID: {ticket.ticket_id}
+Reported By: {ticket.reported_by}
+Issue Category: {ticket.issue_category}
+Submitted Date: {ticket.submitted_date}
+
+Issue Description:
+{ticket.issue_description}
+
+Please analyze this ticket and generate the structured IT support report.
+"""
+
+
+# -----------------------------
+# Step 4 — Backend Endpoint
+# -----------------------------
 @app.post("/api")
 def resolve_ticket(
     ticket: TicketRecord,
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
 ):
-    # Extract user identity
+    # Verified Clerk user
     user_id = creds.decoded["sub"]
 
     messages = [
@@ -78,24 +117,27 @@ def resolve_ticket(
         {"role": "user", "content": user_prompt_for(ticket)},
     ]
 
-    # Initialize streaming request
     stream = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
         stream=True,
     )
 
+    # -----------------------------
+    # SSE Streaming Generator
+    # -----------------------------
     def event_stream():
         try:
             for chunk in stream:
-                if chunk.choices[0].delta.content:
-                    text = chunk.choices[0].delta.content
-                    # Nettoyage des retours à la ligne pour le format SSE
-                    # On remplace les sauts de ligne réels par une convention que le front gère
-                    yield f"data: {text}\n\n"
-            
+                text = chunk.choices[0].delta.content
+                if text:
+                    for line in text.split("\n"):
+                        yield f"data: {line}\n\n"
+
             yield "data: [DONE]\n\n"
+
         except Exception as e:
-            yield f"data: Error during streaming: {str(e)}\n\n"
+            yield f"data: Error: {str(e)}\n\n"
 
     return StreamingResponse(event_stream(), media_type="text/event-stream")
+    
