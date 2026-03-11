@@ -8,19 +8,29 @@ import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
+// -----------------------------
+// Fallback si l'utilisateur n'a pas le plan Premium
+// -----------------------------
 const PricingFallback = () => (
   <div className="container mx-auto px-4 py-12 text-center">
-    <h2 className="text-2xl font-bold mb-4 text-gray-800">Premium Plan Required</h2>
-    <p className="text-gray-600 mb-8">
-      You need an active <strong>Premium</strong> subscription to use the AI Ticket Resolver.
+    <h2 className="text-3xl font-bold mb-4 text-gray-800">🚀 Débloquez la puissance de l'IA</h2>
+    <p className="text-gray-600 mb-8 max-w-2xl mx-auto">
+      L'accès à l'IT Ticket Resolver est réservé à nos membres Premium. 
+      Choisissez un plan ci-dessous pour commencer à résoudre vos tickets en quelques secondes.
     </p>
     <PricingTable />
   </div>
 );
 
+// -----------------------------
+// TicketForm
+// -----------------------------
 function TicketForm() {
   const { getToken } = useAuth();
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
+
+  // Assurer que l'utilisateur est chargé
+  if (!isLoaded) return <p className="text-center py-10 text-gray-500">Loading user...</p>;
 
   const [ticketId, setTicketId] = useState<string>("");
   const [reportedBy, setReportedBy] = useState<string>(user?.fullName || "");
@@ -30,6 +40,7 @@ function TicketForm() {
   const [output, setOutput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
 
+  // Soumission du formulaire
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setOutput("");
@@ -63,7 +74,7 @@ function TicketForm() {
           setLoading(false);
           return;
         }
-        setOutput((prev) => prev + ev.data);
+        setOutput((prev) => prev + ev.data + "\n"); // newline pour Markdown
       },
       onclose() {
         setLoading(false);
@@ -87,6 +98,7 @@ function TicketForm() {
         className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-200"
       >
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {/* Ticket ID */}
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Ticket ID</label>
             <input
@@ -99,6 +111,7 @@ function TicketForm() {
             />
           </div>
 
+          {/* Reported By */}
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Reported By</label>
             <input
@@ -111,6 +124,7 @@ function TicketForm() {
             />
           </div>
 
+          {/* Issue Category */}
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Issue Category</label>
             <select
@@ -127,6 +141,7 @@ function TicketForm() {
             </select>
           </div>
 
+          {/* Submission Date */}
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">Submission Date</label>
             <DatePicker
@@ -138,6 +153,7 @@ function TicketForm() {
           </div>
         </div>
 
+        {/* Issue Description */}
         <div className="flex flex-col">
           <label className="text-sm font-semibold mb-1 text-gray-700">Issue Description</label>
           <textarea
@@ -159,6 +175,7 @@ function TicketForm() {
         </button>
       </form>
 
+      {/* AI Output */}
       {output && (
         <section className="mt-8 bg-white rounded-xl shadow-2xl border-t-8 border-indigo-600 overflow-hidden">
           <div className="bg-indigo-50 p-4 border-b border-indigo-100">
@@ -173,16 +190,19 @@ function TicketForm() {
   );
 }
 
+// -----------------------------
+// Product Page
+// -----------------------------
 export default function Product() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* User Button */}
       <div className="absolute top-4 right-4">
         <UserButton showName={true} />
       </div>
-      <Protect
-        plan="premium_subscription"
-        fallback={<PricingFallback />}
-      >
+
+      {/* Protect Premium */}
+      <Protect plan="premium_subscription" fallback={<PricingFallback />}>
         <TicketForm />
       </Protect>
     </main>
