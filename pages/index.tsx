@@ -5,8 +5,8 @@ import Link from "next/link";
 import { SignInButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs";
 
 /**
- * Landing Page de l'application TechFix AI.
- * Présente les fonctionnalités et gère l'accès au dashboard (Step 7 & 8).
+ * Landing Page — TechFix AI
+ * Presents the application features and manages access to the dashboard (Step 7 & 8).
  */
 export default function Home() {
   return (
@@ -45,8 +45,8 @@ export default function Home() {
               >
                 Go to Dashboard
               </Link>
-              <UserButton 
-                showName={true} 
+              <UserButton
+                showName={true}
                 afterSignOutUrl="/"
                 appearance={{
                   elements: {
@@ -67,13 +67,13 @@ export default function Home() {
           </h2>
 
           <p className="text-lg md:text-xl text-gray-600 dark:text-gray-400 mb-12 max-w-2xl mx-auto leading-relaxed">
-            Notre assistant IA analyse vos tickets techniques pour générer 
-            des diagnostics précis et des guides de résolution étape par étape instantanément.
+            Our AI assistant analyzes your technical tickets to generate
+            precise diagnostics and step-by-step resolution guides instantly.
           </p>
 
           {/* Features Grid */}
           <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto mb-16">
-            {/* Card 1 - Diagnostic */}
+            {/* Card 1 - Diagnostics */}
             <div className="relative group">
               <div className="absolute inset-0 bg-indigo-600 rounded-2xl blur opacity-10 group-hover:opacity-20 transition duration-300"></div>
               <div className="relative bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-full">
@@ -82,12 +82,12 @@ export default function Home() {
                   Smart Diagnostics
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Analyse immédiate de la cause racine pour les pannes matérielles, logicielles et réseau.
+                  Instant root cause analysis for hardware, software, and network failures.
                 </p>
               </div>
             </div>
 
-            {/* Card 2 - Guides */}
+            {/* Card 2 - Resolution Guides */}
             <div className="relative group">
               <div className="absolute inset-0 bg-blue-600 rounded-2xl blur opacity-10 group-hover:opacity-20 transition duration-300"></div>
               <div className="relative bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-full">
@@ -96,12 +96,12 @@ export default function Home() {
                   Resolution Guides
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Instructions claires et numérotées pour réparer sans attendre l'intervention d'un technicien.
+                  Clear, numbered instructions to resolve issues without waiting for a technician.
                 </p>
               </div>
             </div>
 
-            {/* Card 3 - Priority */}
+            {/* Card 3 - Priority Gating */}
             <div className="relative group">
               <div className="absolute inset-0 bg-teal-600 rounded-2xl blur opacity-10 group-hover:opacity-20 transition duration-300"></div>
               <div className="relative bg-white dark:bg-gray-800 p-8 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 h-full">
@@ -110,7 +110,7 @@ export default function Home() {
                   Priority Gating
                 </h3>
                 <p className="text-gray-600 dark:text-gray-400">
-                  Gestion automatique des priorités basée sur l'impact business et la sévérité de l'incident.
+                  Automatic priority management based on business impact and incident severity.
                 </p>
               </div>
             </div>
@@ -124,16 +124,16 @@ export default function Home() {
             >
               Resolve a Ticket Now
             </Link>
-            
+
             <SignedOut>
               <p className="text-sm text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-700/50 px-4 py-1.5 rounded-full font-medium">
-                🔒 Authentification requise pour accéder au résolveur
+                🔒 Authentication required to access the resolver
               </p>
             </SignedOut>
           </div>
         </div>
 
-        {/* Footer info */}
+        {/* Footer */}
         <footer className="mt-20 border-t border-gray-200 dark:border-gray-700 pt-8 text-center">
           <div className="text-xs uppercase tracking-[0.2em] font-bold text-gray-400 dark:text-gray-500">
             Enterprise Grade • ITIL Compliant • Powered by GPT-4o

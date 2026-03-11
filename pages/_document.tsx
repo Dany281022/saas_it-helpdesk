@@ -1,15 +1,16 @@
+// pages/_document.tsx
 import { Html, Head, Main, NextScript } from 'next/document';
 
 /**
- * Structure HTML globale de l'application.
- * Note : Les titres et viewports sont gérés dans les pages individuelles 
- * pour un meilleur SEO et une meilleure hydratation React.
+ * Global HTML structure of the application.
+ * Note: Titles and viewports are managed within individual pages 
+ * for better SEO and React hydration.
  */
 export default function Document() {
   return (
-    <Html lang="fr">
+    <Html lang="en">
       <Head>
-        {/* On ne garde ici que les polices ou les liens globaux */}
+        {/* Global fonts or static assets */}
         <link rel="icon" href="/favicon.ico" />
         <meta name="theme-color" content="#4f46e5" />
       </Head>
