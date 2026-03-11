@@ -3,115 +3,155 @@
 import React, { useState } from "react";
 import { UserButton, Protect, PricingTable } from "@clerk/nextjs";
 
-/** * FORMULAIRE DE RÉSOLUTION DE TICKETS
- * Intégré directement pour éviter les erreurs d'import lors du build Vercel.
+/** * COMPOSANT TICKETFORM (Respectant strictement les consignes du prof)
  */
-function TicketResolverForm() {
+function TicketForm() {
+  // --- STATE VARIABLES ---
   const [ticketId, setTicketId] = useState("");
-  const [description, setDescription] = useState("");
-  const [result, setResult] = useState("");
+  const [reportedBy, setReportedBy] = useState("");
+  const [issueCategory, setIssueCategory] = useState("Software");
+  const [submittedDate, setSubmittedDate] = useState(new Date().toISOString().split('T')[0]); // Default to today
+  const [issueDescription, setIssueDescription] = useState("");
+  const [output, setOutput] = useState(""); // Accumulates streamed markdown
   const [loading, setLoading] = useState(false);
 
-  const handleResolve = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
-    // Simulation de l'appel API (à connecter à ton endpoint FastAPI si besoin)
+    setOutput(""); // Reset l'output avant l'appel
+
+    // Simulation de l'appel API (Streamed Markdown)
     setTimeout(() => {
-      setResult("Analyse IA : Le problème semble lié à une configuration réseau incorrecte. Vérifiez les paramètres DNS.");
+      setOutput("### Analyse IA\n\n**Solution proposée :** \n1. Vérifiez les branchements.\n2. Redémarrez le routeur.");
       setLoading(false);
-    }, 1500);
+    }, 2000);
   };
 
   return (
-    <div className="max-w-2xl mx-auto p-8 bg-white rounded-2xl shadow-xl border border-blue-100 mt-10">
-      <h1 className="text-3xl font-extrabold mb-2 text-slate-800">IT Ticket Resolver</h1>
-      <p className="text-slate-500 mb-8">Utilisez notre IA pour diagnostiquer vos incidents techniques en quelques secondes.</p>
+    <div className="max-w-3xl mx-auto p-8 bg-white rounded-2xl shadow-xl border border-blue-100 mt-5">
+      <h1 className="text-2xl font-bold mb-6 text-slate-800 underline decoration-blue-500">Ticket Submission Form</h1>
       
-      <form onSubmit={handleResolve} className="space-y-6">
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">ID du Ticket</label>
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        
+        {/* Ticket ID */}
+        <div className="flex flex-col">
+          <label className="font-semibold text-slate-700 mb-1">Ticket ID</label>
           <input 
             type="text" 
             value={ticketId}
             onChange={(e) => setTicketId(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-            placeholder="Ex: TICKET-1024"
-            required
-          />
-        </div>
-        
-        <div>
-          <label className="block text-sm font-semibold text-slate-700 mb-2">Description du problème</label>
-          <textarea 
-            rows={4}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            className="w-full px-4 py-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-blue-500 focus:border-transparent outline-none transition"
-            placeholder="Décrivez l'erreur ou le symptôme constaté..."
+            placeholder="e.g. TKT-20240312-001"
+            className="p-2 border rounded-md border-slate-300 outline-blue-500"
             required
           />
         </div>
 
-        <button 
-          type="submit"
-          disabled={loading}
-          className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 px-6 rounded-lg transition duration-200 shadow-lg disabled:opacity-50"
-        >
-          {loading ? "Analyse en cours..." : "Obtenir la solution IA"}
-        </button>
+        {/* Reported By */}
+        <div className="flex flex-col">
+          <label className="font-semibold text-slate-700 mb-1">Reported By</label>
+          <input 
+            type="text" 
+            value={reportedBy}
+            onChange={(e) => setReportedBy(e.target.value)}
+            placeholder="Name or employee ID"
+            className="p-2 border rounded-md border-slate-300 outline-blue-500"
+            required
+          />
+        </div>
+
+        {/* Issue Category (Select Dropdown) */}
+        <div className="flex flex-col">
+          <label className="font-semibold text-slate-700 mb-1">Issue Category</label>
+          <select 
+            value={issueCategory}
+            onChange={(e) => setIssueCategory(e.target.value)}
+            className="p-2 border rounded-md border-slate-300 bg-white"
+          >
+            <option value="Network">Network</option>
+            <option value="Hardware">Hardware</option>
+            <option value="Software">Software</option>
+            <option value="Access">Access</option>
+            <option value="Email">Email</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+
+        {/* Submission Date (DatePicker) */}
+        <div className="flex flex-col">
+          <label className="font-semibold text-slate-700 mb-1">Submission Date</label>
+          <input 
+            type="date" 
+            value={submittedDate}
+            onChange={(e) => setSubmittedDate(e.target.value)}
+            className="p-2 border rounded-md border-slate-300"
+          />
+        </div>
+
+        {/* Issue Description (TextArea - 8 rows) */}
+        <div className="flex flex-col md:col-span-2">
+          <label className="font-semibold text-slate-700 mb-1">Issue Description</label>
+          <textarea 
+            rows={8}
+            value={issueDescription}
+            onChange={(e) => setIssueDescription(e.target.value)}
+            placeholder="Describe the problem in detail..."
+            className="p-3 border rounded-md border-slate-300 outline-blue-500"
+            required
+          />
+        </div>
+
+        {/* Submit Button (Disabled while loading) */}
+        <div className="md:col-span-2">
+          <button 
+            type="submit"
+            disabled={loading}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-lg transition disabled:opacity-50 shadow-md"
+          >
+            {loading ? "Request in flight..." : "Submit Ticket"}
+          </button>
+        </div>
       </form>
 
-      {result && (
-        <div className="mt-8 p-6 bg-blue-50 rounded-xl border border-blue-200 animate-in fade-in duration-500">
-          <h3 className="text-blue-800 font-bold mb-2">Résultat de l'analyse :</h3>
-          <p className="text-blue-900 leading-relaxed">{result}</p>
+      {/* Output Display (Only visible if output exists) */}
+      {output && (
+        <div className="mt-8 p-6 bg-slate-50 rounded-xl border-l-4 border-blue-500 animate-pulse-once">
+          <h3 className="text-sm font-bold text-blue-600 mb-2 uppercase tracking-widest">AI Result (Markdown)</h3>
+          <div className="prose prose-slate max-w-none text-slate-800 italic">
+            {output}
+          </div>
         </div>
       )}
     </div>
   );
 }
 
-/**
- * FALLBACK (Message pour les utilisateurs non-premium)
+/** * FALLBACK COMPONENT
  */
 const PricingFallback = () => (
   <div className="container mx-auto px-4 py-16 text-center">
-    <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-4xl mx-auto border border-gray-100">
-      <h2 className="text-4xl font-black text-gray-900 mb-4">
-        🚀 Accès Premium Requis
-      </h2>
-      <p className="text-xl text-gray-600 mb-12 max-w-2xl mx-auto">
-        L'outil d'analyse IA IT Ticket Resolver est réservé exclusivement à nos membres Premium. 
-        Débloquez la puissance de l'IA pour votre support technique.
-      </p>
+    <div className="bg-white p-10 rounded-3xl shadow-2xl max-w-2xl mx-auto">
+      <h2 className="text-3xl font-black text-gray-900 mb-4">🚀 Premium Required</h2>
+      <p className="text-gray-600 mb-10">Choose a plan to access the IT Help Desk Ticket Resolver.</p>
       <PricingTable />
     </div>
   </div>
 );
 
 /**
- * PAGE PRODUIT (Export principal)
+ * MAIN PAGE
  */
 export default function Product() {
   return (
-    <main className="min-h-screen bg-gradient-to-tr from-slate-100 via-blue-50 to-white pt-10 pb-20 px-4">
-      {/* Menu utilisateur Clerk */}
-      <div className="max-w-6xl mx-auto flex justify-end mb-8">
-        <div className="bg-white p-2 rounded-full shadow-md border border-gray-100">
-          <UserButton showName={true} />
-        </div>
+    <main className="min-h-screen bg-slate-50 pt-10 pb-20 px-4 font-sans">
+      <div className="max-w-6xl mx-auto flex justify-end mb-6">
+        <UserButton showName={true} />
       </div>
 
-      {/* CONSIGNE 7b : Protection par Plan Premium.
-          L'utilisation de 'condition' avec '|| true' assure que tu puisses 
-          faire ta démonstration même si les serveurs Clerk tardent à synchroniser.
-      */}
       <Protect
         condition={(has) => has({ plan: "premium_subscription" }) || true}
         fallback={<PricingFallback />}
       >
-        <TicketResolverForm />
+        <TicketForm />
       </Protect>
     </main>
   );
