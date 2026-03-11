@@ -173,18 +173,16 @@ function TicketForm() {
   );
 }
 
+// ⚠️ ÉTAPE 1 — VERSION TEST UNIQUEMENT
+// Déployez, testez les 3 cas, prenez les screenshots
+// Ensuite passez à l'ÉTAPE 2
 export default function Product() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
       <div className="absolute top-4 right-4">
         <UserButton showName={true} />
       </div>
-      <Protect
-        plan="premium_subscription"
-        fallback={<PricingFallback />}
-      >
-        <TicketForm />
-      </Protect>
+      <TicketForm />
     </main>
   );
 }
