@@ -5,20 +5,35 @@ from pydantic import BaseModel
 from fastapi_clerk_auth import ClerkConfig, ClerkHTTPBearer, HTTPAuthorizationCredentials
 from openai import OpenAI
 
+
+# ---------------------------------------
 # Initialize FastAPI application
+# ---------------------------------------
 app = FastAPI()
 
-# Initialize OpenAI client (API key from environment variables)
+
+# ---------------------------------------
+# Initialize OpenAI client
+# API key is loaded from environment variable
+# ---------------------------------------
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# Configure Clerk authentication with JWKS URL from environment
-clerk_config = ClerkConfig(jwks_url=os.getenv("CLERK_JWKS_URL"))
+
+# ---------------------------------------
+# Configure Clerk authentication
+# This verifies the JWT sent from the frontend
+# ---------------------------------------
+clerk_config = ClerkConfig(
+    jwks_url=os.getenv("CLERK_JWKS_URL")
+)
+
 clerk_guard = ClerkHTTPBearer(clerk_config)
 
 
-# ---------------------------------------------------------
-# Step 2 — Data Model (The contract between Frontend & Backend)
-# ---------------------------------------------------------
+# ---------------------------------------
+# Step 2 — Ticket Data Model
+# This model validates incoming request data
+# ---------------------------------------
 class TicketRecord(BaseModel):
     ticket_id: str
     reported_by: str
@@ -27,124 +42,132 @@ class TicketRecord(BaseModel):
     issue_description: str
 
 
-# ---------------------------------------------------------
-# Step 3a — System Prompt (Role and Output Structure)
-# ---------------------------------------------------------
+# ---------------------------------------
+# Step 3a — System Prompt
+# Defines the structure the AI must follow
+# ---------------------------------------
 system_prompt = """
 You are a Senior IT Support Specialist working in an enterprise IT department.
 
-Your task is to analyze incoming IT support tickets and produce a professional report.
-You MUST produce EXACTLY three sections with the following exact headings.
+Your task is to analyze incoming IT support tickets and generate a professional support report.
+
+You MUST follow this exact markdown structure and produce ONLY the following three sections.
 
 ## Technical Incident Report
-Write 2–3 professional paragraphs for IT records explaining:
-• The specific technical problem identified
-• Possible root causes and affected systems
-• Security or productivity impact on the organization
+Write 2–3 professional paragraphs explaining:
+• the issue
+• probable root causes
+• affected infrastructure components
+• potential productivity or security impact
 
 ---
 
 ## Resolution Steps
-Provide a numbered list of troubleshooting steps for a technician.
-Each step MUST include:
-• A short descriptive title
-• A priority label: (**Critical**, **High**, **Medium**, or **Low**)
-• Clear, actionable instructions and commands if applicable
+Provide a numbered list of troubleshooting steps.
 
-Example:
+Each step MUST include:
+• a short step title
+• a priority level (**Critical**, **High**, **Medium**, **Low**)
+• clear instructions
+• commands when applicable
+
+Example format:
+
 1. **Verify VPN Gateway – Critical**
-   - Check status on the firewall dashboard.
-   - Command: `ping 10.0.0.1`
+   - Check if the VPN gateway is operational
+   - Command: `ping <VPN_IP>`
 
 ---
 
 ## User Status Email
-**Subject:** [Action Required/Update] Regarding your IT Ticket
+
+**Subject:** Short professional subject line
 
 Dear [User Name],
 
-Write a polite, jargon-free explanation for the end-user.
-Explain what is happening and what the IT team is doing to fix it.
-Keep the tone helpful and professional.
+Explain the situation in simple, non-technical language.
+Inform the user what IT is doing to resolve the issue.
 
-Best regards,
+Best regards  
 IT Support Team
 
-IMPORTANT: 
-- Use Markdown for formatting.
-- Ensure sections are separated by horizontal rules (---).
-- Do not repeat the headings.
+IMPORTANT RULES:
+- Produce exactly THREE sections
+- Do NOT repeat headings
+- Use clean markdown formatting
 """
 
 
-# ---------------------------------------------------------
-# Step 3b — User Prompt (Injecting runtime data)
-# ---------------------------------------------------------
+# ---------------------------------------
+# Step 3b — User Prompt Builder
+# Converts the ticket into a readable prompt
+# ---------------------------------------
 def user_prompt_for(ticket: TicketRecord) -> str:
-    """Formats the incoming ticket data into a clear prompt for the AI."""
     return f"""
-NEW IT SUPPORT TICKET DATA:
-- Ticket ID: {ticket.ticket_id}
-- Reported By: {ticket.reported_by}
-- Category: {ticket.issue_category}
-- Date: {ticket.submitted_date}
+IT SUPPORT TICKET
+
+Ticket ID: {ticket.ticket_id}
+Reported By: {ticket.reported_by}
+Issue Category: {ticket.issue_category}
+Submitted Date: {ticket.submitted_date}
 
 Issue Description:
 {ticket.issue_description}
 
-Please analyze the data above and generate the three-section report.
+Analyze this support ticket and produce the structured IT support report.
 """
 
 
-# ---------------------------------------------------------
-# Step 4 — Backend Endpoint (Streaming & Auth)
-# ---------------------------------------------------------
+# ---------------------------------------
+# Step 4 — Backend API Endpoint
+# Receives ticket data from frontend
+# Sends it to OpenAI
+# Streams the response back to the client
+# ---------------------------------------
 @app.post("/api")
 def resolve_ticket(
     ticket: TicketRecord,
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
 ):
-    """
-    Authenticated endpoint that triggers the AI analysis.
-    Verified user identity is extracted from the Clerk JWT.
-    """
+
+    # Extract authenticated Clerk user ID
     user_id = creds.decoded["sub"]
 
-    # Prepare messages for OpenAI
+    # Construct messages for the AI model
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt_for(ticket)},
     ]
 
-    # Create a streaming completion
+    # Create a streaming request to OpenAI
     stream = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
         stream=True,
     )
 
-    # -----------------------------------------------------
-    # SSE Streaming Generator (Newline handling logic)
-    # -----------------------------------------------------
+    # ---------------------------------------
+    # SSE Streaming Generator
+    # Sends incremental text chunks to frontend
+    # ---------------------------------------
     def event_stream():
         try:
             for chunk in stream:
-                content = chunk.choices[0].delta.content
-                if content:
-                    # To satisfy the "split text on newlines" requirement while 
-                    # keeping Markdown valid, we split but ensure data is sent clearly.
-                    # SSE format: data: [content]\n\n
-                    lines = content.split("\n")
-                    for i, line in enumerate(lines):
-                        # If there's a real newline, we send it as a separate SSE event
-                        yield f"data: {line}\n\n"
-            
-            # Custom signal to tell the frontend we are finished
+                text = chunk.choices[0].delta.content
+
+                # Only send non-empty content
+                if text:
+                    yield f"data: {text}\n\n"
+
+            # Signal the frontend that streaming is complete
             yield "data: [DONE]\n\n"
 
         except Exception as e:
-            yield f"data: Error during streaming: {str(e)}\n\n"
+            # Return error message to client if something fails
+            yield f"data: Error: {str(e)}\n\n"
 
-    # Return as text/event-stream for real-time UI updates
-    return StreamingResponse(event_stream(), media_type="text/event-stream")
-    
+    # Return Server-Sent Events stream
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream"
+    )
