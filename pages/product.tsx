@@ -8,6 +8,10 @@ import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
+/**
+ * Component displayed when the user does not have a Premium subscription.
+ * Uses Clerk's <PricingTable /> to handle monetization.
+ */
 const PricingFallback = () => (
   <div className="container mx-auto px-4 py-12 text-center">
     <h2 className="text-2xl font-bold mb-4 text-gray-800">Premium Plan Required</h2>
@@ -22,6 +26,7 @@ function TicketForm() {
   const { getToken } = useAuth();
   const { user } = useUser();
 
+  // --- State Management ---
   const [ticketId, setTicketId] = useState<string>("");
   const [reportedBy, setReportedBy] = useState<string>(user?.fullName || "");
   const [issueCategory, setIssueCategory] = useState<string>("Software");
@@ -30,11 +35,16 @@ function TicketForm() {
   const [output, setOutput] = useState<string>("");
   const [loading, setLoading] = useState<boolean>(false);
 
+  /**
+   * Handles form submission and initiates Server-Sent Events (SSE) stream
+   * to receive real-time AI analysis from the FastAPI backend.
+   */
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setOutput("");
     setLoading(true);
 
+    // Retrieve JWT token for backend authentication
     const jwt = await getToken();
     if (!jwt) {
       setOutput("Authentication required.");
@@ -44,6 +54,7 @@ function TicketForm() {
 
     const controller = new AbortController();
 
+    // Fetch Event Source handles the streaming connection
     await fetchEventSource("/api", {
       method: "POST",
       signal: controller.signal,
@@ -59,10 +70,12 @@ function TicketForm() {
         issue_description: issueDescription,
       }),
       onmessage(ev) {
+        // [DONE] is the custom signal sent by FastAPI to close the stream
         if (ev.data === "[DONE]") {
           setLoading(false);
           return;
         }
+        // Append incoming text chunks to the output state
         setOutput((prev) => prev + ev.data);
       },
       onclose() {
@@ -82,6 +95,7 @@ function TicketForm() {
         <span>🛠️</span> IT Ticket Resolver
       </h1>
 
+      {/* Ticket Submission Form */}
       <form
         onSubmit={handleSubmit}
         className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-200"
@@ -159,15 +173,16 @@ function TicketForm() {
         </button>
       </form>
 
-      {/* --- Section Output avec le nouveau design "Clean Medical Style" --- */}
+      {/* --- AI Output Section: Styled as a formal technical report --- */}
       {output && (
         <section className="mt-12 max-w-3xl mx-auto animate-in fade-in slide-in-from-bottom-4 duration-500">
           <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden">
-            {/* Header of the output card */}
+            {/* Output Header */}
             <div className="bg-gray-50 px-8 py-6 border-b border-gray-100 flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">
-                Analysis Results
+                Resolution Report
               </h2>
+              {/* Activity Indicator */}
               {loading && (
                 <span className="flex h-3 w-3 relative">
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
@@ -176,7 +191,7 @@ function TicketForm() {
               )}
             </div>
 
-            {/* Content Area */}
+            {/* Markdown Body using Tailwind Typography (prose) */}
             <div className="p-10 bg-white">
               <div className="prose prose-slate prose-headings:text-gray-900 prose-p:text-gray-600 prose-strong:text-gray-900 max-w-none">
                 <ReactMarkdown remarkPlugins={[remarkGfm]}>
@@ -195,12 +210,19 @@ function TicketForm() {
   );
 }
 
+/**
+ * Main Product Page. 
+ * Wrapped in Clerk's <Protect> to enforce subscription-based access.
+ */
 export default function Product() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+      {/* User profile button positioned in the top right */}
       <div className="absolute top-4 right-4">
         <UserButton showName={true} />
       </div>
+
+      {/* Access Control Gate */}
       <Protect
         plan="premium_subscription"
         fallback={<PricingFallback />}
