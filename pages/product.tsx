@@ -1,10 +1,9 @@
 "use client";
 
-import { useState, useEffect, FormEvent } from "react";
+import React, { useState, useEffect } from "react";
 import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
-import remarkBreaks from "remark-breaks";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -40,13 +39,13 @@ function TicketForm() {
   const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
   const [issueDescription, setIssueDescription] = useState("");
 
-  /** AI output */
+  /** AI output state */
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
 
   /**
-   * Prefill reporter name
+   * Prefill the reporter name when Clerk user loads
    */
   useEffect(() => {
     if (isLoaded && user?.fullName) {
@@ -56,9 +55,10 @@ function TicketForm() {
 
 
   /**
-   * Submit ticket and stream AI response
+   * Handle form submission
+   * Sends ticket to backend and streams AI response
    */
-  async function handleSubmit(e: FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
 
     e.preventDefault();
 
@@ -68,7 +68,7 @@ function TicketForm() {
     const jwt = await getToken();
 
     if (!jwt) {
-      setOutput("Authentication required");
+      setOutput("Authentication required.");
       setLoading(false);
       return;
     }
@@ -76,8 +76,8 @@ function TicketForm() {
     const controller = new AbortController();
 
     await fetchEventSource("/api", {
-      signal: controller.signal,
       method: "POST",
+      signal: controller.signal,
 
       headers: {
         "Content-Type": "application/json",
@@ -92,13 +92,25 @@ function TicketForm() {
         issue_description: issueDescription,
       }),
 
+      /**
+       * Handle streaming messages from backend
+       */
       onmessage(ev) {
+
         if (ev.data === "[DONE]") {
           setLoading(false);
           return;
         }
-        // Correction : On accumule ev.data tel quel sans ajouter de \n manuel
-        setOutput((prev) => prev + ev.data);
+
+        /**
+         * Clean streaming artifacts
+         * Prevents broken words and spacing issues
+         */
+        const cleaned = ev.data
+          .replace(/\s+/g, " ")
+          .replace(/\s([.,!?])/g, "$1");
+
+        setOutput(prev => prev + cleaned + "\n");
       },
 
       onclose() {
@@ -106,7 +118,7 @@ function TicketForm() {
       },
 
       onerror(err) {
-        console.error("SSE error:", err);
+        console.error("SSE Error:", err);
         controller.abort();
         setLoading(false);
       },
@@ -114,6 +126,9 @@ function TicketForm() {
   }
 
 
+  /**
+   * Wait until Clerk user loads
+   */
   if (!isLoaded) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -229,7 +244,7 @@ function TicketForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-colors"
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg"
         >
           {loading ? "Analyzing Ticket..." : "Get AI Solution"}
         </button>
@@ -245,13 +260,14 @@ function TicketForm() {
 
           <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
 
-            <div className="bg-gray-50 px-8 py-6 border-b flex justify-between items-center">
+
+            <div className="bg-gray-50 px-8 py-6 border-b flex justify-between">
               <h2 className="text-xl font-bold text-gray-800">
                 Resolution Report
               </h2>
 
               {loading && (
-                <span className="animate-pulse text-indigo-500 text-sm font-medium">
+                <span className="animate-pulse text-indigo-500 text-sm">
                   Generating...
                 </span>
               )}
@@ -259,17 +275,9 @@ function TicketForm() {
 
 
             <div className="p-10">
-              {/* Classes 'prose' ajustées pour forcer le gras en bloc et l'espacement */}
-              <div className="prose prose-slate max-w-none 
-                  prose-headings:text-indigo-900 
-                  prose-strong:block 
-                  prose-strong:mt-4 
-                  prose-strong:mb-1 
-                  prose-p:mb-4">
+              <div className="prose prose-slate max-w-none">
 
-                <ReactMarkdown
-                  remarkPlugins={[remarkGfm, remarkBreaks]}
-                >
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
                   {output}
                 </ReactMarkdown>
 
@@ -291,19 +299,20 @@ function TicketForm() {
 
 
 /**
- * Product page with Clerk subscription gate
+ * Main product page
+ * Protects access using Clerk subscription gating
  */
 export default function Product() {
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 pb-12">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
 
       <div className="absolute top-4 right-4">
         <UserButton showName />
       </div>
 
       <Protect
-        role="Premium"
+        plan="premium_subscription"
         fallback={<PricingFallback />}
       >
         <TicketForm />
