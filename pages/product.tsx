@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import rehypeRaw from "rehype-raw";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -260,7 +261,6 @@ function TicketForm() {
 
           <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
 
-
             <div className="bg-gray-50 px-8 py-6 border-b flex justify-between">
               <h2 className="text-xl font-bold text-gray-800">
                 Resolution Report
@@ -273,11 +273,13 @@ function TicketForm() {
               )}
             </div>
 
-
             <div className="p-10">
               <div className="prose prose-slate max-w-none">
 
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm]}
+                  rehypePlugins={[rehypeRaw]}
+                >
                   {output}
                 </ReactMarkdown>
 
