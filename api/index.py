@@ -1,17 +1,20 @@
 import os
-from fastapi import FastAPI, Depends
+from typing import Generator
+
+from fastapi import FastAPI, Depends, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi_clerk_auth import ClerkConfig, ClerkHTTPBearer, HTTPAuthorizationCredentials
 from openai import OpenAI
 
 
-app = FastAPI()
+app = FastAPI(title="IT Ticket AI Resolver")
 
-# OpenAI client
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+# ────────────────────────────────────────────────
+# Clients & Auth
+# ────────────────────────────────────────────────
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Clerk authentication
 clerk_config = ClerkConfig(jwks_url=os.getenv("CLERK_JWKS_URL"))
 clerk_guard = ClerkHTTPBearer(clerk_config)
 
@@ -28,143 +31,145 @@ class TicketRecord(BaseModel):
 
 
 # ────────────────────────────────────────────────
-# System Prompt
+# Prompts
 # ────────────────────────────────────────────────
-system_prompt = """
+SYSTEM_PROMPT = """\
 You are a Senior IT Support Specialist working in an enterprise IT department.
 
 Your task is to analyze incoming IT support tickets and produce a professional report.
-You MUST produce EXACTLY three sections using the following headings (do not change them):
+You MUST produce EXACTLY three sections using these exact headings (do not change them):
 
 ## Technical Incident Report
-Write 2–3 professional paragraphs explaining:
+Write 2–3 concise, professional paragraphs explaining:
 • the technical issue
-• possible root causes
-• affected systems or infrastructure
-• potential productivity or security impact
+• likely root causes
+• affected systems / infrastructure
+• productivity or security/business impact
 
 ---
 
 ## Resolution Steps
-Provide a numbered list of troubleshooting steps.
+Provide a numbered list of troubleshooting / resolution steps.
 
 Each step MUST include:
-• a short title
-• a priority level in bold (**Critical**, **High**, **Medium**, or **Low**)
+• short descriptive title
+• priority level in **bold** (**Critical**, **High**, **Medium**, **Low**)
 • clear instructions
-• relevant commands when applicable (use correct syntax for Windows or Linux as appropriate)
+• relevant commands when appropriate (specify OS when needed)
 
-Example format:
-1. **Verify VPN Service Status – Critical**
-   - Check if the service is running
-   - Command (Linux): `systemctl status openvpn`
+Example:
+1. **Check VPN Service Status – Critical**
+   - Verify the service is running on the VPN server
+   - Command (Linux): `systemctl status openvpn@server`
 
 ---
 
 ## User Status Email
 
-**Subject:** Update Regarding Your IT Support Ticket [Ticket ID]
+**Subject:** Update on Your IT Support Ticket [Ticket ID]
 
 Dear [Reported By],
 
-Use simple, non-technical language.
-Explain what is happening and what the IT team is doing.
+Use friendly, non-technical language.
+Explain the current status and next steps in simple terms.
 
 Best regards,  
 IT Support Team
 
-IMPORTANT RULES:
-- Use valid Markdown formatting (## for headings, ** for bold, - or * for lists, 1. for numbered lists)
-- Separate the three main sections with --- (horizontal rule)
-- Never repeat or change the exact section headings
-- Be concise but complete
-- For commands: use correct syntax and indicate OS when relevant
+Rules:
+- Use correct Markdown: ## headings, **bold**, 1. numbered lists, - bullets
+- Separate the three sections with ---
+- Never repeat or alter the section headings
+- Be concise, accurate and professional
+- For commands: use correct syntax and indicate platform (Windows / Linux / macOS)
 """
 
-
-# ────────────────────────────────────────────────
-# User Prompt
-# ────────────────────────────────────────────────
-def user_prompt_for(ticket: TicketRecord) -> str:
-    return f"""
+def user_prompt(ticket: TicketRecord) -> str:
+    return f"""\
 IT SUPPORT TICKET
 
 Ticket ID:          {ticket.ticket_id}
 Reported By:        {ticket.reported_by}
 Category:           {ticket.issue_category}
-Submitted Date:     {ticket.submitted_date}
+Submitted:          {ticket.submitted_date}
 
-Issue Description:
+Description:
 {ticket.issue_description.strip()}
 
-Analyze this ticket carefully and generate the three-section report exactly as instructed.
+Analyze this ticket and generate the three-section report exactly as instructed.
 """
 
 
 # ────────────────────────────────────────────────
-# API Endpoint
+# Streaming generator
+# ────────────────────────────────────────────────
+def generate_sse_events(stream) -> Generator[str, None, None]:
+    buffer = ""
+
+    try:
+        for chunk in stream:
+            if not chunk.choices or chunk.choices[0].delta.content is None:
+                continue
+
+            text = chunk.choices[0].delta.content.replace("\r", "")
+            buffer += text
+
+            while "\n" in buffer:
+                line, buffer = buffer.split("\n", 1)
+                line = line.rstrip()
+                if line:
+                    yield f"data: {line}\n\n"
+
+        # Send remaining buffer
+        if buffer.strip():
+            yield f"data: {buffer.rstrip()}\n\n"
+
+        yield "data: [DONE]\n\n"
+
+    except Exception as exc:
+        yield f"data: Error during generation: {str(exc)}\n\n"
+        yield "data: [DONE]\n\n"
+
+
+# ────────────────────────────────────────────────
+# Endpoint
 # ────────────────────────────────────────────────
 @app.post("/api")
-def resolve_ticket(
+async def resolve_ticket(
     ticket: TicketRecord,
+    request: Request,
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
-):
-    user_id = creds.decoded["sub"]  # Clerk user ID
+) -> StreamingResponse:
+    # Optional: you can log or rate-limit using user_id
+    user_id = creds.decoded.get("sub")
 
     messages = [
-        {"role": "system", "content": system_prompt},
-        {"role": "user",   "content": user_prompt_for(ticket)},
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user",   "content": user_prompt(ticket)},
     ]
 
-    stream = client.chat.completions.create(
+    openai_stream = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=0.7,
+        temperature=0.65,
         max_tokens=1800,
         stream=True,
     )
 
-    def event_stream():
-        try:
-            buffer = ""
-
-            for chunk in stream:
-                if not chunk.choices:
-                    continue
-
-                delta = chunk.choices[0].delta
-                if delta.content is None:
-                    continue
-
-                text = delta.content
-
-                # Nettoyage léger
-                text = text.replace("\r", "")
-
-                buffer += text
-
-                # On envoie ligne par ligne quand possible
-                while "\n" in buffer:
-                    line, buffer = buffer.split("\n", 1)
-                    if line.strip():
-                        yield f"data: {line}\n\n"
-
-                # Ce qui reste dans le buffer (partiel) → on attend la suite
-
-            # Envoi du reste + fin
-            if buffer.strip():
-                yield f"data: {buffer}\n\n"
-
-            yield "data: [DONE]\n\n"
-
-        except Exception as e:
-            yield f"data: Error: {str(e)}\n\n"
-            yield "data: [DONE]\n\n"
-
-
     return StreamingResponse(
-        event_stream(),
+        generate_sse_events(openai_stream),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache"}
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0",
+            "X-Content-Type-Options": "nosniff",
+        },
     )
+
+
+# Optional: health check (useful for Vercel / debugging)
+@app.get("/health")
+async def health_check():
+    return {"status": "ok", "service": "it-ticket-resolver"}
     
