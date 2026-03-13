@@ -1,27 +1,38 @@
 import os
-from typing import Generator
-
-from fastapi import FastAPI, Depends, Request
+from fastapi import FastAPI, Depends
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from fastapi_clerk_auth import ClerkConfig, ClerkHTTPBearer, HTTPAuthorizationCredentials
 from openai import OpenAI
 
 
-app = FastAPI(title="IT Ticket AI Resolver")
+# ---------------------------------------------------------
+# Initialize FastAPI application
+# ---------------------------------------------------------
+app = FastAPI()
 
-# ────────────────────────────────────────────────
-# Clients & Auth
-# ────────────────────────────────────────────────
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-clerk_config = ClerkConfig(jwks_url=os.getenv("CLERK_JWKS_URL"))
+# ---------------------------------------------------------
+# Initialize OpenAI client (API key from environment variables)
+# ---------------------------------------------------------
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+
+# ---------------------------------------------------------
+# Configure Clerk authentication using JWKS URL
+# This validates the JWT sent from the frontend
+# ---------------------------------------------------------
+clerk_config = ClerkConfig(
+    jwks_url=os.getenv("CLERK_JWKS_URL")
+)
+
 clerk_guard = ClerkHTTPBearer(clerk_config)
 
 
-# ────────────────────────────────────────────────
-# Data Model
-# ────────────────────────────────────────────────
+# ---------------------------------------------------------
+# Step 2 — Data Model
+# Defines the structure of incoming ticket data
+# ---------------------------------------------------------
 class TicketRecord(BaseModel):
     ticket_id: str
     reported_by: str
@@ -30,146 +41,142 @@ class TicketRecord(BaseModel):
     issue_description: str
 
 
-# ────────────────────────────────────────────────
-# Prompts
-# ────────────────────────────────────────────────
-SYSTEM_PROMPT = """\
+# ---------------------------------------------------------
+# Step 3a — System Prompt
+# Defines the role of the AI and required output structure
+# ---------------------------------------------------------
+system_prompt = """
 You are a Senior IT Support Specialist working in an enterprise IT department.
 
 Your task is to analyze incoming IT support tickets and produce a professional report.
-You MUST produce EXACTLY three sections using these exact headings (do not change them):
+You MUST produce EXACTLY three sections using the following headings.
 
 ## Technical Incident Report
-Write 2–3 concise, professional paragraphs explaining:
+Write 2–3 professional paragraphs explaining:
 • the technical issue
-• likely root causes
-• affected systems / infrastructure
-• productivity or security/business impact
+• possible root causes
+• affected systems or infrastructure
+• potential productivity or security impact
 
 ---
 
 ## Resolution Steps
-Provide a numbered list of troubleshooting / resolution steps.
+Provide a numbered list of troubleshooting steps.
 
 Each step MUST include:
-• short descriptive title
-• priority level in **bold** (**Critical**, **High**, **Medium**, **Low**)
+• a short title
+• a priority level (**Critical**, **High**, **Medium**, or **Low**)
 • clear instructions
-• relevant commands when appropriate (specify OS when needed)
+• commands when applicable
 
 Example:
-1. **Check VPN Service Status – Critical**
-   - Verify the service is running on the VPN server
-   - Command (Linux): `systemctl status openvpn@server`
+
+1. **Verify VPN Gateway – Critical**
+   - Check gateway status
+   - Command: `ping 10.0.0.1`
 
 ---
 
 ## User Status Email
 
-**Subject:** Update on Your IT Support Ticket [Ticket ID]
+**Subject:** Update Regarding Your IT Support Ticket
 
-Dear [Reported By],
+Dear [User Name],
 
-Use friendly, non-technical language.
-Explain the current status and next steps in simple terms.
+Explain the situation in simple language without technical jargon.
+Describe what the IT team is doing to resolve the issue.
 
-Best regards,  
+Best regards  
 IT Support Team
 
-Rules:
-- Use correct Markdown: ## headings, **bold**, 1. numbered lists, - bullets
-- Separate the three sections with ---
-- Never repeat or alter the section headings
-- Be concise, accurate and professional
-- For commands: use correct syntax and indicate platform (Windows / Linux / macOS)
+IMPORTANT RULES:
+- Use Markdown formatting.
+- Separate sections with horizontal rules (---).
+- Do NOT repeat section headings.
 """
 
-def user_prompt(ticket: TicketRecord) -> str:
-    return f"""\
+
+# ---------------------------------------------------------
+# Step 3b — User Prompt
+# Injects ticket data into the AI request
+# ---------------------------------------------------------
+def user_prompt_for(ticket: TicketRecord) -> str:
+    """Format the ticket data into a structured prompt for the AI model."""
+    return f"""
 IT SUPPORT TICKET
 
-Ticket ID:          {ticket.ticket_id}
-Reported By:        {ticket.reported_by}
-Category:           {ticket.issue_category}
-Submitted:          {ticket.submitted_date}
+Ticket ID: {ticket.ticket_id}
+Reported By: {ticket.reported_by}
+Category: {ticket.issue_category}
+Submitted Date: {ticket.submitted_date}
 
-Description:
-{ticket.issue_description.strip()}
+Issue Description:
+{ticket.issue_description}
 
-Analyze this ticket and generate the three-section report exactly as instructed.
+Analyze this ticket and produce the structured IT support report.
 """
 
 
-# ────────────────────────────────────────────────
-# Streaming generator
-# ────────────────────────────────────────────────
-def generate_sse_events(stream) -> Generator[str, None, None]:
-    buffer = ""
-
-    try:
-        for chunk in stream:
-            if not chunk.choices or chunk.choices[0].delta.content is None:
-                continue
-
-            text = chunk.choices[0].delta.content.replace("\r", "")
-            buffer += text
-
-            while "\n" in buffer:
-                line, buffer = buffer.split("\n", 1)
-                line = line.rstrip()
-                if line:
-                    yield f"data: {line}\n\n"
-
-        # Send remaining buffer
-        if buffer.strip():
-            yield f"data: {buffer.rstrip()}\n\n"
-
-        yield "data: [DONE]\n\n"
-
-    except Exception as exc:
-        yield f"data: Error during generation: {str(exc)}\n\n"
-        yield "data: [DONE]\n\n"
-
-
-# ────────────────────────────────────────────────
-# Endpoint
-# ────────────────────────────────────────────────
+# ---------------------------------------------------------
+# Step 4 — Backend Endpoint
+# Handles authenticated ticket analysis requests
+# ---------------------------------------------------------
 @app.post("/api")
-async def resolve_ticket(
+def resolve_ticket(
     ticket: TicketRecord,
-    request: Request,
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
-) -> StreamingResponse:
-    # Optional: you can log or rate-limit using user_id
-    user_id = creds.decoded.get("sub")
+):
+    """
+    Authenticated endpoint that sends ticket data to OpenAI
+    and streams the AI response back to the frontend using SSE.
+    """
 
+    # Extract authenticated user ID from Clerk JWT
+    user_id = creds.decoded["sub"]
+
+    # Prepare messages for OpenAI
     messages = [
-        {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": user_prompt(ticket)},
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt_for(ticket)},
     ]
 
-    openai_stream = client.chat.completions.create(
+    # Create streaming request to OpenAI
+    stream = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
-        temperature=0.65,
-        max_tokens=1800,
         stream=True,
     )
 
+
+    # -----------------------------------------------------
+    # SSE Streaming Generator
+    # Streams AI output incrementally to the frontend
+    # -----------------------------------------------------
+    def event_stream():
+        try:
+            for chunk in stream:
+                text = chunk.choices[0].delta.content
+
+                if text:
+                    # Clean streaming artifacts
+                    cleaned_text = text.replace("\r", "")
+
+                    # Split by newline to respect SSE event format
+                    lines = cleaned_text.split("\n")
+
+                    for line in lines:
+                        yield f"data: {line}\n\n"
+
+            # Signal completion to the frontend
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+            yield f"data: Error during streaming: {str(e)}\n\n"
+
+
+    # Return response as Server-Sent Events
     return StreamingResponse(
-        generate_sse_events(openai_stream),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0",
-            "X-Content-Type-Options": "nosniff",
-        },
+        event_stream(),
+        media_type="text/event-stream"
     )
-
-
-# Optional: health check (useful for Vercel / debugging)
-@app.get("/health")
-async def health_check():
-    return {"status": "ok", "service": "it-ticket-resolver"}
     

@@ -1,7 +1,6 @@
-fastapi==0.115.0
-uvicorn==0.30.6
-openai==1.51.0          
-pydantic==2.9.2
-python-dotenv==1.0.1
-fastapi-clerk-auth      # exact package name may vary — check pip show
-# add any others your code uses
+fastapi
+uvicorn
+openai
+fastapi-clerk-auth
+pydantic
+
