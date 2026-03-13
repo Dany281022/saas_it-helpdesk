@@ -20,7 +20,6 @@ client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
 # ---------------------------------------------------------
 # Configure Clerk authentication using JWKS URL
-# This validates the JWT sent from the frontend
 # ---------------------------------------------------------
 clerk_config = ClerkConfig(
     jwks_url=os.getenv("CLERK_JWKS_URL")
@@ -30,8 +29,7 @@ clerk_guard = ClerkHTTPBearer(clerk_config)
 
 
 # ---------------------------------------------------------
-# Step 2 — Data Model
-# Defines the structure of incoming ticket data
+# Data Model
 # ---------------------------------------------------------
 class TicketRecord(BaseModel):
     ticket_id: str
@@ -42,66 +40,82 @@ class TicketRecord(BaseModel):
 
 
 # ---------------------------------------------------------
-# Step 3a — System Prompt
-# Defines the role of the AI and required output structure
+# System Prompt
 # ---------------------------------------------------------
 system_prompt = """
 You are a Senior IT Support Specialist working in an enterprise IT department.
 
-Your task is to analyze incoming IT support tickets and produce a professional report.
-You MUST produce EXACTLY three sections using the following headings.
+When given a support ticket, you MUST generate a report using EXACTLY this structure, with NO deviation:
+
+
 
 ## Technical Incident Report
-Write 2–3 professional paragraphs explaining:
-• the technical issue
-• possible root causes
-• affected systems or infrastructure
-• potential productivity or security impact
 
----
+**Ticket ID:** [ticket_id]
+**Reported By:** [reported_by]
+**Category:** [issue_category]
+**Date:** [submitted_date]
+
+**Summary:**
+[2–3 sentences describing the reported issue, the affected users, and the probable root cause.]
+
+**Affected Systems:**
+[List the systems, clients, or infrastructure impacted.]
+
+**Business Impact:**
+[Describe productivity and security risks concisely.]
+
+
 
 ## Resolution Steps
-Provide a numbered list of troubleshooting steps.
 
-Each step MUST include:
-• a short title
-• a priority level (**Critical**, **High**, **Medium**, or **Low**)
-• clear instructions
-• commands when applicable
+1. **[Step Title] – Critical**
+   - [What to check or do]
+   - Command: `[terminal command or UI instruction]`
 
-Example:
+2. **[Step Title] – High**
+   - [What to check or do]
+   - Command: `[terminal command or UI instruction]`
 
-1. **Verify VPN Gateway – Critical**
-   - Check gateway status
-   - Command: `ping 10.0.0.1`
+3. **[Step Title] – Medium**
+   - [What to check or do]
+   - Command: `[terminal command or UI instruction]`
 
----
+[Continue with all necessary steps, each with an appropriate priority: Critical / High / Medium / Low]
+
+
 
 ## User Status Email
 
 **Subject:** Update Regarding Your IT Support Ticket
 
-Dear [User Name],
+Dear [reported_by],
 
-Explain the situation in simple language without technical jargon.
-Describe what the IT team is doing to resolve the issue.
+[Paragraph 1: Acknowledge the issue and confirm the team is aware, in plain language.]
 
-Best regards  
+[Paragraph 2: Brief explanation of what is being done, without technical jargon.]
+
+Best regards,
 IT Support Team
 
+
+
 IMPORTANT RULES:
-- Use Markdown formatting.
-- Separate sections with horizontal rules (---).
-- Do NOT repeat section headings.
+- Always produce all three sections in the exact order above.
+- Each section MUST be preceded by a blank line divider on its own line, then a blank line, then the ## heading.
+- The header block (Ticket ID → Business Impact) must have NO extra blank lines between fields.
+- Resolution steps MUST be numbered and each MUST include a priority level.
+- The email MUST be written in simple, non-technical language for an end user.
+- Do NOT wrap the output in a code block.
+- Do NOT add any introductory sentence or commentary before the report.
+- Do NOT add any closing sentence or commentary after the report.
 """
 
 
 # ---------------------------------------------------------
-# Step 3b — User Prompt
-# Injects ticket data into the AI request
+# User Prompt
 # ---------------------------------------------------------
 def user_prompt_for(ticket: TicketRecord) -> str:
-    """Format the ticket data into a structured prompt for the AI model."""
     return f"""
 IT SUPPORT TICKET
 
@@ -118,65 +132,54 @@ Analyze this ticket and produce the structured IT support report.
 
 
 # ---------------------------------------------------------
-# Step 4 — Backend Endpoint
-# Handles authenticated ticket analysis requests
+# Backend Endpoint
 # ---------------------------------------------------------
 @app.post("/api")
 def resolve_ticket(
     ticket: TicketRecord,
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
 ):
-    """
-    Authenticated endpoint that sends ticket data to OpenAI
-    and streams the AI response back to the frontend using SSE.
-    """
-
-    # Extract authenticated user ID from Clerk JWT
     user_id = creds.decoded["sub"]
 
-    # Prepare messages for OpenAI
     messages = [
         {"role": "system", "content": system_prompt},
         {"role": "user", "content": user_prompt_for(ticket)},
     ]
 
-    # Create streaming request to OpenAI
     stream = client.chat.completions.create(
         model="gpt-4o-mini",
         messages=messages,
         stream=True,
     )
 
-
-    # -----------------------------------------------------
-    # SSE Streaming Generator
-    # Streams AI output incrementally to the frontend
-    # -----------------------------------------------------
+    # ---------------------------------------------------------
+    # FIX: Do NOT split chunks by "\n" — this was fragmenting
+    # dates (e.g. "2026-03-13" → "202", "6", "-03", "-13")
+    # and breaking mid-word tokens across SSE events.
+    #
+    # Instead, send each raw chunk as a single SSE event,
+    # using a custom delimiter (__NL__) to encode newlines.
+    # The frontend decodes __NL__ back into real newlines.
+    # This avoids the SSE \n\n frame-boundary conflict while
+    # preserving the full structure of the streamed markdown.
+    # ---------------------------------------------------------
     def event_stream():
         try:
             for chunk in stream:
                 text = chunk.choices[0].delta.content
 
                 if text:
-                    # Clean streaming artifacts
-                    cleaned_text = text.replace("\r", "")
+                    # Encode newlines as a safe delimiter instead of splitting
+                    encoded = text.replace("\r\n", "\n").replace("\r", "\n")
+                    encoded = encoded.replace("\n", "__NL__")
+                    yield f"data: {encoded}\n\n"
 
-                    # Split by newline to respect SSE event format
-                    lines = cleaned_text.split("\n")
-
-                    for line in lines:
-                        yield f"data: {line}\n\n"
-
-            # Signal completion to the frontend
             yield "data: [DONE]\n\n"
 
         except Exception as e:
             yield f"data: Error during streaming: {str(e)}\n\n"
 
-
-    # Return response as Server-Sent Events
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream"
     )
-    

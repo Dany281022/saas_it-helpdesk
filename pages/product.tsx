@@ -4,10 +4,64 @@ import React, { useState, useEffect } from "react";
 import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import rehypeRaw from "rehype-raw";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
+
+
+/**
+ * Custom renderers for ReactMarkdown.
+ *
+ * WHY: Tailwind's `prose` class requires @tailwindcss/typography to style
+ * markdown elements (h2, ul, ol, li, hr). Without it, ## headings render
+ * as unstyled text, numbered lists lose their numbers, and bullet points
+ * disappear. Rather than requiring a Tailwind plugin, we supply explicit
+ * inline styles via these component overrides — zero extra dependencies.
+ */
+const markdownComponents = {
+  // ## Section headings → bold, larger, with top spacing
+  h2: ({ children }: { children: React.ReactNode }) => (
+    <h2 style={{ fontSize: "1.25rem", fontWeight: 700, marginTop: "1.5rem", marginBottom: "0.5rem", color: "#1e293b" }}>
+      {children}
+    </h2>
+  ),
+  // Numbered lists — keep the numbers visible
+  ol: ({ children }: { children: React.ReactNode }) => (
+    <ol style={{ listStyleType: "decimal", paddingLeft: "1.5rem", marginBottom: "1rem" }}>
+      {children}
+    </ol>
+  ),
+  // Bullet lists — keep the dots visible
+  ul: ({ children }: { children: React.ReactNode }) => (
+    <ul style={{ listStyleType: "disc", paddingLeft: "1.5rem", marginBottom: "1rem" }}>
+      {children}
+    </ul>
+  ),
+  // List items — spacing between them
+  li: ({ children }: { children: React.ReactNode }) => (
+    <li style={{ marginBottom: "0.35rem" }}>{children}</li>
+  ),
+  // Horizontal rules (---) — visible separator
+  hr: () => (
+    <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "1.25rem 0" }} />
+  ),
+  // Strong/bold — slightly darker for contrast
+  strong: ({ children }: { children: React.ReactNode }) => (
+    <strong style={{ fontWeight: 700, color: "#0f172a" }}>{children}</strong>
+  ),
+  // Inline code (commands) — monospace with subtle background
+  code: ({ children }: { children: React.ReactNode }) => (
+    <code style={{ fontFamily: "monospace", backgroundColor: "#f1f5f9", padding: "0.1rem 0.35rem", borderRadius: "4px", fontSize: "0.85em" }}>
+      {children}
+    </code>
+  ),
+  // Paragraphs — comfortable line spacing
+  p: ({ children }: { children: React.ReactNode }) => (
+    <p style={{ marginBottom: "0.75rem", lineHeight: 1.7 }}>{children}</p>
+  ),
+};
 
 
 /**
@@ -18,11 +72,9 @@ const PricingFallback = () => (
     <h2 className="text-2xl font-bold mb-4 text-gray-800">
       Premium Plan Required
     </h2>
-
     <p className="text-gray-600 mb-8">
       You need an active <strong>Premium</strong> subscription to use the AI Ticket Resolver.
     </p>
-
     <PricingTable />
   </div>
 );
@@ -33,21 +85,15 @@ function TicketForm() {
   const { getToken } = useAuth();
   const { user, isLoaded } = useUser();
 
-  /** Ticket form state */
   const [ticketId, setTicketId] = useState("");
   const [reportedBy, setReportedBy] = useState("");
   const [issueCategory, setIssueCategory] = useState("Software");
   const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
   const [issueDescription, setIssueDescription] = useState("");
 
-  /** AI output state */
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
-
-  /**
-   * Prefill the reporter name when Clerk user loads
-   */
   useEffect(() => {
     if (isLoaded && user?.fullName) {
       setReportedBy(user.fullName);
@@ -55,14 +101,8 @@ function TicketForm() {
   }, [isLoaded, user]);
 
 
-  /**
-   * Handle form submission
-   * Sends ticket to backend and streams AI response
-   */
   async function handleSubmit(e: React.FormEvent) {
-
     e.preventDefault();
-
     setOutput("");
     setLoading(true);
 
@@ -93,25 +133,16 @@ function TicketForm() {
         issue_description: issueDescription,
       }),
 
-      /**
-       * Handle streaming messages from backend
-       */
       onmessage(ev) {
-
         if (ev.data === "[DONE]") {
           setLoading(false);
           return;
         }
 
-        /**
-         * Clean streaming artifacts
-         * Prevents broken words and spacing issues
-         */
-        const cleaned = ev.data
-          .replace(/\s+/g, " ")
-          .replace(/\s([.,!?])/g, "$1");
-
-        setOutput(prev => prev + cleaned + "\n");
+        // FIX: Decode the __NL__ delimiter back into real newlines.
+        // The backend encodes \n as __NL__ to avoid breaking SSE frames.
+        const decoded = ev.data.replace(/__NL__/g, "\n");
+        setOutput(prev => prev + decoded);
       },
 
       onclose() {
@@ -127,9 +158,6 @@ function TicketForm() {
   }
 
 
-  /**
-   * Wait until Clerk user loads
-   */
   if (!isLoaded) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -146,22 +174,17 @@ function TicketForm() {
         <span>🛠️</span> IT Ticket Resolver
       </h1>
 
-
       {/* Ticket Form */}
-
       <form
         onSubmit={handleSubmit}
         className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-200"
       >
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
 
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">
               Ticket ID
             </label>
-
             <input
               type="text"
               required
@@ -172,12 +195,10 @@ function TicketForm() {
             />
           </div>
 
-
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">
               Reported By
             </label>
-
             <input
               type="text"
               required
@@ -187,12 +208,10 @@ function TicketForm() {
             />
           </div>
 
-
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">
               Issue Category
             </label>
-
             <select
               value={issueCategory}
               onChange={(e) => setIssueCategory(e.target.value)}
@@ -207,12 +226,10 @@ function TicketForm() {
             </select>
           </div>
 
-
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">
               Submission Date
             </label>
-
             <DatePicker
               selected={submittedDate}
               onChange={(date) => setSubmittedDate(date)}
@@ -223,13 +240,10 @@ function TicketForm() {
 
         </div>
 
-
         <div className="flex flex-col">
-
           <label className="text-sm font-semibold mb-1 text-gray-700">
             Issue Description
           </label>
-
           <textarea
             required
             rows={8}
@@ -238,9 +252,7 @@ function TicketForm() {
             className="w-full p-4 border rounded-lg"
             placeholder="Describe the problem in detail..."
           />
-
         </div>
-
 
         <button
           type="submit"
@@ -249,13 +261,10 @@ function TicketForm() {
         >
           {loading ? "Analyzing Ticket..." : "Get AI Solution"}
         </button>
-
       </form>
 
 
-
       {/* AI Output */}
-
       {output && (
         <section className="mt-12 max-w-3xl mx-auto">
 
@@ -265,7 +274,6 @@ function TicketForm() {
               <h2 className="text-xl font-bold text-gray-800">
                 Resolution Report
               </h2>
-
               {loading && (
                 <span className="animate-pulse text-indigo-500 text-sm">
                   Generating...
@@ -274,15 +282,14 @@ function TicketForm() {
             </div>
 
             <div className="p-10">
-              <div className="prose prose-slate max-w-none">
-
+              <div style={{ fontSize: "0.95rem", color: "#334155" }}>
                 <ReactMarkdown
-                  remarkPlugins={[remarkGfm]}
+                  remarkPlugins={[remarkGfm, remarkBreaks]}
                   rehypePlugins={[rehypeRaw]}
+                  components={markdownComponents}
                 >
                   {output}
                 </ReactMarkdown>
-
               </div>
             </div>
 
@@ -300,12 +307,7 @@ function TicketForm() {
 }
 
 
-/**
- * Main product page
- * Protects access using Clerk subscription gating
- */
 export default function Product() {
-
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
 
