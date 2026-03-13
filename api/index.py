@@ -5,12 +5,10 @@ from pydantic import BaseModel
 from fastapi_clerk_auth import ClerkConfig, ClerkHTTPBearer, HTTPAuthorizationCredentials
 from openai import OpenAI
 
-
 # ---------------------------------------------------------
 # Initialize FastAPI application
 # ---------------------------------------------------------
 app = FastAPI()
-
 
 # ---------------------------------------------------------
 # Configure Clerk authentication
@@ -18,9 +16,7 @@ app = FastAPI()
 clerk_config = ClerkConfig(
     jwks_url=os.getenv("CLERK_JWKS_URL")
 )
-
 clerk_guard = ClerkHTTPBearer(clerk_config)
-
 
 # ---------------------------------------------------------
 # Step 2 — Data Model
@@ -32,29 +28,43 @@ class TicketRecord(BaseModel):
     submitted_date: str
     issue_description: str
 
-
 # ---------------------------------------------------------
-# Step 3a — System Prompt
+# Step 3a — System Prompt (Optimisé pour le formatage)
 # ---------------------------------------------------------
 system_prompt = """
-You are a senior IT support specialist working in a corporate enterprise IT department.
-
-Your role is to analyze incoming IT help desk tickets and generate a clear professional report that can be used by both IT staff and the end user. The report must be structured and easy to read. It should follow professional documentation standards used by enterprise IT teams.
+You are a senior IT support specialist. Your reports must be perfectly structured.
 
 You MUST produce exactly three sections using the exact headings below.
 
 ## Technical Incident Report
-Write a short professional report describing the technical problem. Explain what the issue likely is, what systems may be affected, and possible root causes. Use clear technical language appropriate for IT documentation. Mention any infrastructure, software, or network components that might be involved.
+Describe the problem, affected systems, and root causes professionally.
+
+---
 
 ## Resolution Steps
-Provide a numbered troubleshooting plan. Each step must include a short title and a priority level such as Critical, High, Medium, or Low. The instructions should be clear enough for an IT technician to follow. Include commands or configuration steps if applicable.
+For this section, you MUST follow this strict format for each step:
+1. The step title and priority MUST be on their own line and in **BOLD**.
+2. The description or commands MUST be on a new line below the title.
+
+Example:
+1. **Verify VPN Server Status – Critical**
+Check the service logs on the gateway.
+
+2. **Update Network Drivers – High**
+Download the latest drivers from the manufacturer.
+
+---
 
 ## User Status Email
-Write a short email that explains the situation to the user in simple language. Avoid technical jargon. Explain what the IT team is doing and reassure the user that the issue is being investigated.
+Write a professional email. The signature MUST be formatted with each element on a new line and in **BOLD** at the very end.
 
-Always use Markdown formatting for headings and lists. Keep the tone professional and structured.
+Example signature format:
+**Best regards,**
+**IT Support Team**
+**Enterprise Services**
+
+Always use Markdown. Ensure there is a double line break between paragraphs.
 """
-
 
 # ---------------------------------------------------------
 # Step 3b — User Prompt
@@ -62,7 +72,6 @@ Always use Markdown formatting for headings and lists. Keep the tone professiona
 def user_prompt_for(ticket: TicketRecord) -> str:
     return f"""
 IT SUPPORT TICKET DETAILS
-
 Ticket ID: {ticket.ticket_id}
 Reported By: {ticket.reported_by}
 Issue Category: {ticket.issue_category}
@@ -71,9 +80,8 @@ Submitted Date: {ticket.submitted_date}
 Issue Description:
 {ticket.issue_description}
 
-Analyze this ticket and generate the full IT support report with the required three sections.
+Generate the full report. Make sure the Resolution Steps titles and the Email Signature are on their own lines and bolded.
 """
-
 
 # ---------------------------------------------------------
 # Step 4 — Backend Endpoint
@@ -83,7 +91,6 @@ def resolve_ticket(
     ticket: TicketRecord,
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
 ):
-
     # Verified Clerk user ID
     user_id = creds.decoded["sub"]
 
@@ -100,28 +107,24 @@ def resolve_ticket(
         stream=True,
     )
 
-
     # -----------------------------------------------------
-    # SSE streaming generator
+    # SSE streaming generator (Correction du flux Markdown)
     # -----------------------------------------------------
     def event_stream():
-
-        for chunk in stream:
-
-            text = chunk.choices[0].delta.content
-
-            if text:
-
-                # split text into lines
-                lines = text.split("\n")
-
-                for line in lines:
-                    yield f"data: {line}\n\n"
-
+        try:
+            for chunk in stream:
+                text = chunk.choices[0].delta.content
+                if text:
+                    # On envoie le texte brut sans le splitter inutilement.
+                    # Cela permet au composant ReactMarkdown de lire les \n naturels.
+                    yield f"data: {text}\n\n"
+            
+            yield "data: [DONE]\n\n"
+        except Exception as e:
+            yield f"data: Error: {str(e)}\n\n"
 
     return StreamingResponse(
         event_stream(),
         media_type="text/event-stream"
     )
-    
     

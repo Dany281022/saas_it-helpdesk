@@ -74,7 +74,6 @@ function TicketForm() {
     }
 
     const controller = new AbortController();
-    let buffer = "";
 
     await fetchEventSource("/api", {
       signal: controller.signal,
@@ -94,8 +93,12 @@ function TicketForm() {
       }),
 
       onmessage(ev) {
-        buffer += ev.data;
-        setOutput(buffer);
+        if (ev.data === "[DONE]") {
+          setLoading(false);
+          return;
+        }
+        // Correction : On accumule ev.data tel quel sans ajouter de \n manuel
+        setOutput((prev) => prev + ev.data);
       },
 
       onclose() {
@@ -226,7 +229,7 @@ function TicketForm() {
         <button
           type="submit"
           disabled={loading}
-          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg"
+          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 rounded-lg transition-colors"
         >
           {loading ? "Analyzing Ticket..." : "Get AI Solution"}
         </button>
@@ -242,13 +245,13 @@ function TicketForm() {
 
           <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
 
-            <div className="bg-gray-50 px-8 py-6 border-b flex justify-between">
+            <div className="bg-gray-50 px-8 py-6 border-b flex justify-between items-center">
               <h2 className="text-xl font-bold text-gray-800">
                 Resolution Report
               </h2>
 
               {loading && (
-                <span className="animate-pulse text-indigo-500 text-sm">
+                <span className="animate-pulse text-indigo-500 text-sm font-medium">
                   Generating...
                 </span>
               )}
@@ -256,7 +259,13 @@ function TicketForm() {
 
 
             <div className="p-10">
-              <div className="prose prose-slate max-w-none">
+              {/* Classes 'prose' ajustées pour forcer le gras en bloc et l'espacement */}
+              <div className="prose prose-slate max-w-none 
+                  prose-headings:text-indigo-900 
+                  prose-strong:block 
+                  prose-strong:mt-4 
+                  prose-strong:mb-1 
+                  prose-p:mb-4">
 
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkBreaks]}
@@ -287,14 +296,14 @@ function TicketForm() {
 export default function Product() {
 
   return (
-    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
+    <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50 pb-12">
 
       <div className="absolute top-4 right-4">
         <UserButton showName />
       </div>
 
       <Protect
-        plan="premium_subscription"
+        role="Premium"
         fallback={<PricingFallback />}
       >
         <TicketForm />
