@@ -1,12 +1,41 @@
 "use client";
 
+// React core — useState manages form and output state,
+// useEffect runs side effects like prefilling the reporter name.
 import React, { useState, useEffect } from "react";
+
+// Clerk components:
+// - useAuth: provides getToken() to retrieve the signed-in user's JWT
+// - UserButton: renders the avatar/sign-out button in the top-right corner
+// - useUser: provides the current user's profile (name, email, etc.)
+// - Protect: gates content behind a subscription plan check
+// - PricingTable: renders Clerk's built-in pricing UI for upselling
 import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
+
+// ReactMarkdown converts the raw markdown string returned by the AI
+// into properly rendered HTML elements (headings, lists, bold, code, etc.)
 import ReactMarkdown from "react-markdown";
+
+// remarkGfm adds GitHub Flavored Markdown support: tables, strikethrough,
+// task lists, and autolinks — extends standard markdown parsing.
 import remarkGfm from "remark-gfm";
+
+// remarkBreaks treats single newlines as <br> tags, which is important
+// for preserving line breaks in the streamed AI output.
 import remarkBreaks from "remark-breaks";
+
+// rehypeRaw allows raw HTML nodes in the markdown to be rendered as-is,
+// useful when the AI output contains inline HTML elements.
 import rehypeRaw from "rehype-raw";
+
+// fetchEventSource is a robust SSE client that supports POST requests
+// and custom headers (unlike the native EventSource API which only supports GET).
+// We need this to send the ticket payload and the Authorization header.
 import { fetchEventSource } from "@microsoft/fetch-event-source";
+
+// DatePicker provides a calendar UI for selecting dates, which is more
+// reliable than a plain text input — it guarantees a valid date format
+// and improves the user experience significantly.
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
@@ -43,7 +72,7 @@ const markdownComponents = {
   li: ({ children }: { children: React.ReactNode }) => (
     <li style={{ marginBottom: "0.35rem" }}>{children}</li>
   ),
-  // Horizontal rules (---) — visible separator
+  // Horizontal rules (---) — visible separator between the three report sections
   hr: () => (
     <hr style={{ border: "none", borderTop: "1px solid #e2e8f0", margin: "1.25rem 0" }} />
   ),
@@ -65,7 +94,9 @@ const markdownComponents = {
 
 
 /**
- * Displayed when user does NOT have a Premium subscription
+ * Displayed when user does NOT have a Premium subscription.
+ * The <Protect> component renders this fallback automatically
+ * when the plan check fails — no manual conditional logic needed.
  */
 const PricingFallback = () => (
   <div className="container mx-auto px-4 py-12 text-center">
@@ -75,6 +106,8 @@ const PricingFallback = () => (
     <p className="text-gray-600 mb-8">
       You need an active <strong>Premium</strong> subscription to use the AI Ticket Resolver.
     </p>
+    {/* PricingTable renders Clerk's built-in subscription plans UI,
+        allowing the user to upgrade without leaving the page. */}
     <PricingTable />
   </div>
 );
@@ -82,18 +115,31 @@ const PricingFallback = () => (
 
 function TicketForm() {
 
+  // getToken() retrieves the current user's signed JWT from Clerk.
+  // We send this token in the Authorization header with every API request
+  // so the backend can verify the user's identity.
   const { getToken } = useAuth();
+
+  // useUser gives us access to the authenticated user's profile data.
+  // We use it to prefill the "Reported By" field with the user's full name.
   const { user, isLoaded } = useUser();
 
+  // Controlled component state — each input field has its own state variable.
+  // This is the React pattern for form inputs: the state drives the input value,
+  // and the onChange handler updates the state on every keystroke.
   const [ticketId, setTicketId] = useState("");
   const [reportedBy, setReportedBy] = useState("");
   const [issueCategory, setIssueCategory] = useState("Software");
   const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
   const [issueDescription, setIssueDescription] = useState("");
 
+  // output accumulates the streamed markdown text from the AI as it arrives.
+  // loading disables the submit button and shows a spinner while a request is in flight.
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
+  // Once the Clerk user profile loads, prefill the "Reported By" field
+  // with the user's full name. This runs only when isLoaded becomes true.
   useEffect(() => {
     if (isLoaded && user?.fullName) {
       setReportedBy(user.fullName);
@@ -102,10 +148,14 @@ function TicketForm() {
 
 
   async function handleSubmit(e: React.FormEvent) {
+    // Prevent the browser's default form submission behavior (page reload).
+    // In a single-page application, we handle the submission ourselves via fetch.
     e.preventDefault();
     setOutput("");
     setLoading(true);
 
+    // Retrieve the JWT from Clerk. This token proves the user is authenticated
+    // and will be sent to the backend in the Authorization header.
     const jwt = await getToken();
 
     if (!jwt) {
@@ -114,6 +164,9 @@ function TicketForm() {
       return;
     }
 
+    // AbortController allows us to cancel the SSE stream programmatically.
+    // We call controller.abort() in the onerror handler to stop the stream
+    // if an error occurs, preventing memory leaks or zombie connections.
     const controller = new AbortController();
 
     await fetchEventSource("/api", {
@@ -122,26 +175,41 @@ function TicketForm() {
 
       headers: {
         "Content-Type": "application/json",
+        // Send the JWT as a Bearer token — the backend's Clerk guard
+        // will extract and verify it before processing the ticket.
         Authorization: `Bearer ${jwt}`,
       },
 
+      // Map camelCase frontend state variables to snake_case backend field names.
+      // FastAPI's Pydantic model expects snake_case (ticket_id, reported_by, etc.)
+      // while JavaScript convention uses camelCase (ticketId, reportedBy, etc.).
+      // A mismatch here would cause a 422 Unprocessable Entity error from FastAPI.
       body: JSON.stringify({
         ticket_id: ticketId,
         reported_by: reportedBy,
         issue_category: issueCategory,
+        // Convert the JavaScript Date object to a YYYY-MM-DD string.
+        // The Pydantic model expects a string, not a Date object.
         submitted_date: submittedDate?.toISOString().split("T")[0],
         issue_description: issueDescription,
       }),
 
       onmessage(ev) {
+        // The backend sends "[DONE]" as the final SSE event to signal
+        // that the stream is complete. We use this to stop the loading spinner.
         if (ev.data === "[DONE]") {
           setLoading(false);
           return;
         }
 
-        // FIX: Decode the __NL__ delimiter back into real newlines.
-        // The backend encodes \n as __NL__ to avoid breaking SSE frames.
+        // Decode the __NL__ delimiter back into real newlines.
+        // The backend encodes \n as __NL__ to avoid breaking SSE frames,
+        // since a literal newline in an SSE "data:" line would end the event prematurely.
         const decoded = ev.data.replace(/__NL__/g, "\n");
+
+        // Append the decoded chunk to the existing output.
+        // Using the functional form of setOutput (prev => ...) ensures
+        // we always append to the latest state, even during rapid updates.
         setOutput(prev => prev + decoded);
       },
 
@@ -151,6 +219,7 @@ function TicketForm() {
 
       onerror(err) {
         console.error("SSE Error:", err);
+        // Abort the stream to release resources and prevent further callbacks.
         controller.abort();
         setLoading(false);
       },
@@ -158,6 +227,9 @@ function TicketForm() {
   }
 
 
+  // Wait until Clerk has finished loading the user session before rendering
+  // the form. Without this check, the "Reported By" field would be empty
+  // on first render and the prefill useEffect would have no data to work with.
   if (!isLoaded) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -174,7 +246,7 @@ function TicketForm() {
         <span>🛠️</span> IT Ticket Resolver
       </h1>
 
-      {/* Ticket Form */}
+      {/* Ticket Form — all inputs are controlled components tied to state variables */}
       <form
         onSubmit={handleSubmit}
         className="space-y-6 bg-white p-8 rounded-xl shadow-lg border border-gray-200"
@@ -208,6 +280,9 @@ function TicketForm() {
             />
           </div>
 
+          {/* Select dropdown enforces a controlled vocabulary for the issue category.
+              This helps the AI produce more consistent output and makes
+              future filtering or analytics easier than free-text input. */}
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">
               Issue Category
@@ -226,6 +301,9 @@ function TicketForm() {
             </select>
           </div>
 
+          {/* DatePicker provides a calendar UI instead of a plain text input.
+              It guarantees a valid date is selected and returns a JavaScript Date object,
+              which we convert to YYYY-MM-DD string format before sending to the backend. */}
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">
               Submission Date
@@ -254,6 +332,7 @@ function TicketForm() {
           />
         </div>
 
+        {/* Disable the button while a request is in flight to prevent duplicate submissions */}
         <button
           type="submit"
           disabled={loading}
@@ -264,7 +343,7 @@ function TicketForm() {
       </form>
 
 
-      {/* AI Output */}
+      {/* AI Output — only rendered once the first chunk of output arrives */}
       {output && (
         <section className="mt-12 max-w-3xl mx-auto">
 
@@ -274,6 +353,7 @@ function TicketForm() {
               <h2 className="text-xl font-bold text-gray-800">
                 Resolution Report
               </h2>
+              {/* Show an animated "Generating..." indicator while the stream is active */}
               {loading && (
                 <span className="animate-pulse text-indigo-500 text-sm">
                   Generating...
@@ -282,6 +362,12 @@ function TicketForm() {
             </div>
 
             <div className="p-10">
+              {/* ReactMarkdown renders the accumulated markdown string as HTML.
+                  - remarkGfm: enables GitHub Flavored Markdown (tables, task lists, etc.)
+                  - remarkBreaks: treats single newlines as <br> for proper line breaks
+                  - rehypeRaw: allows raw HTML nodes from the AI output to render correctly
+                  - components: custom renderers that apply inline styles since Tailwind's
+                    prose class requires @tailwindcss/typography to work properly */}
               <div style={{ fontSize: "0.95rem", color: "#334155" }}>
                 <ReactMarkdown
                   remarkPlugins={[remarkGfm, remarkBreaks]}
@@ -307,6 +393,14 @@ function TicketForm() {
 }
 
 
+/**
+ * Main product page export.
+ * - UserButton is positioned absolutely in the top-right corner for easy access.
+ * - Protect gates the entire TicketForm behind a Clerk subscription check.
+ *   If the user does not have the "premium_subscription" plan, the PricingFallback
+ *   is shown instead. The actual security enforcement happens on the backend —
+ *   this is a UX gate, not a security gate.
+ */
 export default function Product() {
   return (
     <main className="min-h-screen bg-gradient-to-br from-slate-50 to-blue-50">
