@@ -33,12 +33,14 @@ function TicketForm() {
   const { getToken } = useAuth();
   const { user, isLoaded } = useUser();
 
+  /** Ticket form state */
   const [ticketId, setTicketId] = useState("");
   const [reportedBy, setReportedBy] = useState("");
   const [issueCategory, setIssueCategory] = useState("Software");
   const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
   const [issueDescription, setIssueDescription] = useState("");
 
+  /** AI output */
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -92,13 +94,7 @@ function TicketForm() {
       }),
 
       onmessage(ev) {
-
-        if (ev.data === "[DONE]") {
-          setLoading(false);
-          return;
-        }
-
-        buffer += ev.data + "\n";   // FIX: preserve Markdown formatting
+        buffer += ev.data;
         setOutput(buffer);
       },
 
@@ -140,6 +136,7 @@ function TicketForm() {
       >
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
 
           <div className="flex flex-col">
             <label className="text-sm font-semibold mb-1 text-gray-700">
@@ -261,7 +258,9 @@ function TicketForm() {
             <div className="p-10">
               <div className="prose prose-slate max-w-none">
 
-                <ReactMarkdown remarkPlugins={[remarkGfm, remarkBreaks]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkBreaks]}
+                >
                   {output}
                 </ReactMarkdown>
 
