@@ -13,7 +13,13 @@ app = FastAPI()
 
 
 # ---------------------------------------------------------
-# Configure Clerk authentication
+# Initialize OpenAI client
+# ---------------------------------------------------------
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+
+# ---------------------------------------------------------
+# Clerk Authentication
 # ---------------------------------------------------------
 clerk_config = ClerkConfig(
     jwks_url=os.getenv("CLERK_JWKS_URL")
@@ -23,7 +29,7 @@ clerk_guard = ClerkHTTPBearer(clerk_config)
 
 
 # ---------------------------------------------------------
-# Step 2 — Data Model
+# Ticket Data Model
 # ---------------------------------------------------------
 class TicketRecord(BaseModel):
     ticket_id: str
@@ -34,49 +40,69 @@ class TicketRecord(BaseModel):
 
 
 # ---------------------------------------------------------
-# Step 3a — System Prompt
+# System Prompt
 # ---------------------------------------------------------
 system_prompt = """
-You are a senior IT support specialist working in a corporate enterprise IT department.
+You are a Senior IT Support Specialist working in an enterprise IT department.
 
-Your role is to analyze incoming IT help desk tickets and generate a clear professional report that can be used by both IT staff and the end user. The report must be structured and easy to read. It should follow professional documentation standards used by enterprise IT teams.
+Your task is to analyze incoming IT support tickets and produce a professional report.
 
-You MUST produce exactly three sections using the exact headings below.
+You MUST produce EXACTLY three sections using these headings:
 
 ## Technical Incident Report
-Write a short professional report describing the technical problem. Explain what the issue likely is, what systems may be affected, and possible root causes. Use clear technical language appropriate for IT documentation. Mention any infrastructure, software, or network components that might be involved.
+Write 2–3 paragraphs explaining:
+- the technical issue
+- possible root causes
+- affected systems
+- business impact
+
+---
 
 ## Resolution Steps
-Provide a numbered troubleshooting plan. Each step must include a short title and a priority level such as Critical, High, Medium, or Low. The instructions should be clear enough for an IT technician to follow. Include commands or configuration steps if applicable.
+Provide a numbered troubleshooting list.
+
+Each step must include:
+- title
+- priority level (Critical, High, Medium, Low)
+- instructions
+- commands when relevant
+
+---
 
 ## User Status Email
-Write a short email that explains the situation to the user in simple language. Avoid technical jargon. Explain what the IT team is doing and reassure the user that the issue is being investigated.
 
-Always use Markdown formatting for headings and lists. Keep the tone professional and structured.
+Subject: Update Regarding Your IT Support Ticket
+
+Write a simple explanation for the user without technical jargon.
+
+IMPORTANT RULES:
+- Use Markdown formatting.
+- Separate sections with --- lines.
 """
 
 
 # ---------------------------------------------------------
-# Step 3b — User Prompt
+# User Prompt Builder
 # ---------------------------------------------------------
 def user_prompt_for(ticket: TicketRecord) -> str:
+
     return f"""
-IT SUPPORT TICKET DETAILS
+IT SUPPORT TICKET
 
 Ticket ID: {ticket.ticket_id}
 Reported By: {ticket.reported_by}
-Issue Category: {ticket.issue_category}
+Category: {ticket.issue_category}
 Submitted Date: {ticket.submitted_date}
 
 Issue Description:
 {ticket.issue_description}
 
-Analyze this ticket and generate the full IT support report with the required three sections.
+Analyze the ticket and produce the structured report.
 """
 
 
 # ---------------------------------------------------------
-# Step 4 — Backend Endpoint
+# API Endpoint
 # ---------------------------------------------------------
 @app.post("/api")
 def resolve_ticket(
@@ -84,10 +110,8 @@ def resolve_ticket(
     creds: HTTPAuthorizationCredentials = Depends(clerk_guard),
 ):
 
-    # Verified Clerk user ID
+    # Extract authenticated user
     user_id = creds.decoded["sub"]
-
-    client = OpenAI()
 
     messages = [
         {"role": "system", "content": system_prompt},
@@ -102,21 +126,24 @@ def resolve_ticket(
 
 
     # -----------------------------------------------------
-    # SSE streaming generator
+    # SSE Streaming
     # -----------------------------------------------------
     def event_stream():
 
-        for chunk in stream:
+        try:
 
-            text = chunk.choices[0].delta.content
+            for chunk in stream:
 
-            if text:
+                text = chunk.choices[0].delta.content
 
-                # split text into lines
-                lines = text.split("\n")
+                if text:
+                    yield f"data: {text}\n\n"
 
-                for line in lines:
-                    yield f"data: {line}\n\n"
+            yield "data: [DONE]\n\n"
+
+        except Exception as e:
+
+            yield f"data: Error: {str(e)}\n\n"
 
 
     return StreamingResponse(
