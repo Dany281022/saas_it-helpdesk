@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import { useState, useEffect, FormEvent } from "react";
 import { useAuth, UserButton, useUser, Protect, PricingTable } from "@clerk/nextjs";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import remarkBreaks from "remark-breaks";
 import { fetchEventSource } from "@microsoft/fetch-event-source";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -39,13 +40,13 @@ function TicketForm() {
   const [submittedDate, setSubmittedDate] = useState<Date | null>(new Date());
   const [issueDescription, setIssueDescription] = useState("");
 
-  /** AI output state */
+  /** AI output */
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
 
   /**
-   * Prefill the reporter name when Clerk user loads
+   * Prefill reporter name
    */
   useEffect(() => {
     if (isLoaded && user?.fullName) {
@@ -55,10 +56,9 @@ function TicketForm() {
 
 
   /**
-   * Handle form submission
-   * Sends ticket to backend and streams AI response
+   * Submit ticket and stream AI response
    */
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
 
     e.preventDefault();
 
@@ -68,16 +68,17 @@ function TicketForm() {
     const jwt = await getToken();
 
     if (!jwt) {
-      setOutput("Authentication required.");
+      setOutput("Authentication required");
       setLoading(false);
       return;
     }
 
     const controller = new AbortController();
+    let buffer = "";
 
     await fetchEventSource("/api", {
-      method: "POST",
       signal: controller.signal,
+      method: "POST",
 
       headers: {
         "Content-Type": "application/json",
@@ -92,25 +93,9 @@ function TicketForm() {
         issue_description: issueDescription,
       }),
 
-      /**
-       * Handle streaming messages from backend
-       */
       onmessage(ev) {
-
-        if (ev.data === "[DONE]") {
-          setLoading(false);
-          return;
-        }
-
-        /**
-         * Clean streaming artifacts
-         * Prevents broken words and spacing issues
-         */
-        const cleaned = ev.data
-          .replace(/\s+/g, " ")
-          .replace(/\s([.,!?])/g, "$1");
-
-        setOutput(prev => prev + cleaned + "\n");
+        buffer += ev.data;
+        setOutput(buffer);
       },
 
       onclose() {
@@ -118,7 +103,7 @@ function TicketForm() {
       },
 
       onerror(err) {
-        console.error("SSE Error:", err);
+        console.error("SSE error:", err);
         controller.abort();
         setLoading(false);
       },
@@ -126,9 +111,6 @@ function TicketForm() {
   }
 
 
-  /**
-   * Wait until Clerk user loads
-   */
   if (!isLoaded) {
     return (
       <div className="flex justify-center items-center min-h-screen">
@@ -260,7 +242,6 @@ function TicketForm() {
 
           <div className="bg-white rounded-2xl shadow-xl border overflow-hidden">
 
-
             <div className="bg-gray-50 px-8 py-6 border-b flex justify-between">
               <h2 className="text-xl font-bold text-gray-800">
                 Resolution Report
@@ -277,7 +258,9 @@ function TicketForm() {
             <div className="p-10">
               <div className="prose prose-slate max-w-none">
 
-                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                <ReactMarkdown
+                  remarkPlugins={[remarkGfm, remarkBreaks]}
+                >
                   {output}
                 </ReactMarkdown>
 
@@ -299,8 +282,7 @@ function TicketForm() {
 
 
 /**
- * Main product page
- * Protects access using Clerk subscription gating
+ * Product page with Clerk subscription gate
  */
 export default function Product() {
 
